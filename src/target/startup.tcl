@@ -26,6 +26,21 @@ proc ocd_process_reset { MODE } {
 	}
 }
 
+proc arp_examine_all {} {
+	set targets [target names]
+
+	# Examine all targets on enabled taps.
+	foreach t $targets {
+		if {![using_jtag] || [jtag tapisenabled [$t cget -chain-position]]} {
+			$t invoke-event examine-start
+			set err [catch "$t arp_examine allow-defer"]
+			if { $err == 0 } {
+				$t invoke-event examine-end
+			}
+		}
+	}
+}
+
 proc ocd_process_reset_inner { MODE } {
 	set targets [target names]
 
@@ -44,6 +59,8 @@ proc ocd_process_reset_inner { MODE } {
 		return -code error "Invalid mode: $MODE, must be one of: halt, init, or run";
 	}
 
+        set early_reset_init [expr [reset_config_includes independent_trst] || [reset_config_includes srst srst_nogate]]
+
 	# Target event handlers *might* change which TAPs are enabled
 	# or disabled, so we fire all of them.  But don't issue any
 	# target "arp_*" commands, which may issue JTAG transactions,
@@ -57,19 +74,15 @@ proc ocd_process_reset_inner { MODE } {
 		$t invoke-event reset-start
 	}
 
-	# Use TRST or TMS/TCK operations to reset all the tap controllers.
-	# TAP reset events get reported; they might enable some taps.
-	init_reset $MODE
+	if $early_reset_init {
+		# We have an independent trst or no-gating srst
 
-	# Examine all targets on enabled taps.
-	foreach t $targets {
-		if {![using_jtag] || [jtag tapisenabled [$t cget -chain-position]]} {
-			$t invoke-event examine-start
-			set err [catch "$t arp_examine allow-defer"]
-			if { $err == 0 } {
-				$t invoke-event examine-end
-			}
-		}
+		# Use TRST or TMS/TCK operations to reset all the tap controllers.
+		# TAP reset events get reported; they might enable some taps.
+		init_reset $MODE
+
+		# Examine all targets on enabled taps.
+		arp_examine_all
 	}
 
 	# Assert SRST, and report the pre/post events.
@@ -83,6 +96,7 @@ proc ocd_process_reset_inner { MODE } {
 			$t arp_reset assert $halt
 		}
 	}
+	reset_assert_final $MODE
 	foreach t $targets {
 		$t invoke-event reset-assert-post
 	}
@@ -91,6 +105,11 @@ proc ocd_process_reset_inner { MODE } {
 	# Note:  no target sees !SRST before "pre" or after "post".
 	foreach t $targets {
 		$t invoke-event reset-deassert-pre
+	}
+	reset_deassert_initial $MODE
+	if { !$early_reset_init } {
+		if [using_jtag] { jtag arp_init }
+		arp_examine_all
 	}
 	foreach t $targets {
 		# Again, de-assert code needs to know if we 'halt'
