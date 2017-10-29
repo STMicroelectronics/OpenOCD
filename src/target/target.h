@@ -69,6 +69,16 @@ enum nvp_assert {
 	NVP_ASSERT,
 };
 
+enum target_dbg_under_srst {
+	DBG_UNDER_SRST_UNKNOWN = 0,
+	DBG_UNDER_SRST_WORKING = 1,
+		/* Debug circuitry is working with SRST asserted */
+	DBG_UNDER_SRST_GATED = 2,
+		/* Debug circuitry holds the setting but access to it is blocked under SRST */
+	DBG_UNDER_SRST_CLEARED = 3,
+		/* SRST clears debug circuitry */
+};
+
 enum target_reset_mode {
 	RESET_UNKNOWN = 0,
 	RESET_RUN = 1,		/* reset and let target run */
@@ -152,7 +162,8 @@ struct target {
 
 	struct target_event_action *event_action;
 
-	int reset_halt;						/* attempt resetting the CPU into the halted mode? */
+	enum target_dbg_under_srst dbg_under_srst;	/* how SRST signal influences the debug circuitry */
+	int reset_halt;						/* attempt resetting the CPU into the halted mode */
 	target_addr_t working_area;				/* working area (initialised RAM). Evaluated
 										 * upon first allocation from virtual/physical address. */
 	bool working_area_virt_spec;		/* virtual address specified? */

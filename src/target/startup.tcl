@@ -10,12 +10,14 @@ set in_process_reset 0
 # Catch reset recursion
 proc ocd_process_reset { MODE } {
 	global in_process_reset
+	global arp_reset_mode
 	if {$in_process_reset} {
 		set in_process_reset 0
 		return -code error "'reset' can not be invoked recursively"
 	}
 
 	set in_process_reset 1
+	set arp_reset_mode $MODE
 	set success [expr [catch {ocd_process_reset_inner $MODE} result]==0]
 	set in_process_reset 0
 
@@ -59,7 +61,8 @@ proc ocd_process_reset_inner { MODE } {
 		return -code error "Invalid mode: $MODE, must be one of: halt, init, or run";
 	}
 
-        set early_reset_init [expr [reset_config_includes independent_trst] || [reset_config_includes srst srst_nogate]]
+	global arp_reset_halting
+	set arp_reset_halting $halt
 
 	# Target event handlers *might* change which TAPs are enabled
 	# or disabled, so we fire all of them.  But don't issue any
@@ -70,9 +73,22 @@ proc ocd_process_reset_inner { MODE } {
 	# relative to a previous restrictive scheme
 
 	foreach t $targets {
-		# New event script.
 		$t invoke-event reset-start
 	}
+
+	# If srst_nogate is set, check all targets whether they support it
+	if {[reset_config_includes srst srst_nogate]} {
+		foreach t $targets {
+			if {[$t cget -dbg-under-srst] ne "working"} {
+				reset_config srst_gates_jtag
+				echo "'srst_nogate' is not supported by at least one target"
+				echo "Reset config changed to 'srst_gates_jtag'"
+				break;
+			}
+		}
+	}
+        set early_reset_init [expr {[reset_config_includes independent_trst]
+				    || [reset_config_includes srst srst_nogate]}]
 
 	if $early_reset_init {
 		# We have an independent trst or no-gating srst
@@ -85,36 +101,47 @@ proc ocd_process_reset_inner { MODE } {
 		arp_examine_all
 	}
 
-	# Assert SRST, and report the pre/post events.
-	# Note:  no target sees SRST before "pre" or after "post".
 	foreach t $targets {
 		$t invoke-event reset-assert-pre
 	}
+
+	# Prepare all targets with debug not working under SRST
+	# Note: Preparing a target with debug cleared by SRST has no point
+	# if SRST enabled
 	foreach t $targets {
-		# C code needs to know if we expect to 'halt'
-		if {![using_jtag] || [jtag tapisenabled [$t cget -chain-position]]} {
-			$t arp_reset assert $halt
+		set tapenabled [expr {![using_jtag] || [jtag tapisenabled [$t cget -chain-position]]}]
+		if {$tapenabled && [$t cget -dbg-under-srst] ne "working"} {
+			$t arp_reset assert $arp_reset_halting
 		}
 	}
+
+	# Assert SRST
 	reset_assert_final $MODE
+
+	# Prepare other targets under SRST
+	foreach t $targets {
+		set tapenabled [expr {![using_jtag] || [jtag tapisenabled [$t cget -chain-position]]}]
+		if {$tapenabled && [$t cget -dbg-under-srst] eq "working"} {
+			$t arp_reset assert $arp_reset_halting
+		}
+	}
 	foreach t $targets {
 		$t invoke-event reset-assert-post
 	}
 
-	# Now de-assert SRST, and report the pre/post events.
-	# Note:  no target sees !SRST before "pre" or after "post".
 	foreach t $targets {
 		$t invoke-event reset-deassert-pre
 	}
+
+	# Deassert SRST
 	reset_deassert_initial $MODE
 	if { !$early_reset_init } {
 		if [using_jtag] { jtag arp_init }
 		arp_examine_all
 	}
 	foreach t $targets {
-		# Again, de-assert code needs to know if we 'halt'
 		if {![using_jtag] || [jtag tapisenabled [$t cget -chain-position]]} {
-			$t arp_reset deassert $halt
+			$t arp_reset deassert $arp_reset_halting
 		}
 	}
 	foreach t $targets {
@@ -124,7 +151,7 @@ proc ocd_process_reset_inner { MODE } {
 	# Pass 1 - Now wait for any halt (requested as part of reset
 	# assert/deassert) to happen.  Ideally it takes effect without
 	# first executing any instructions.
-	if { $halt } {
+	if { $arp_reset_halting } {
 		foreach t $targets {
 			if {[using_jtag] && ![jtag tapisenabled [$t cget -chain-position]]} {
 				continue
