@@ -200,6 +200,7 @@ target_to_cm(struct target *target)
 }
 
 int cortex_m_examine(struct target *target);
+int cortex_m_prepare_reset(struct target *target, bool halt, bool without_srst);
 int cortex_m_set_breakpoint(struct target *target, struct breakpoint *breakpoint);
 int cortex_m_unset_breakpoint(struct target *target, struct breakpoint *breakpoint);
 int cortex_m_add_breakpoint(struct target *target, struct breakpoint *breakpoint);
