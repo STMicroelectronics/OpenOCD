@@ -1905,6 +1905,7 @@ static int cortex_a_remove_breakpoint(struct target *target, struct breakpoint *
  * Cortex-A Reset functions
  */
 
+#if 0
 static int cortex_a_assert_reset(struct target *target)
 {
 	struct armv7a_common *armv7a = target_to_armv7a(target);
@@ -1975,6 +1976,7 @@ static int cortex_a_deassert_reset(struct target *target)
 
 	return ERROR_OK;
 }
+#endif
 
 static int cortex_a_set_dcc_mode(struct target *target, uint32_t mode, uint32_t *dscr)
 {
@@ -3508,8 +3510,10 @@ struct target_type cortexa_target = {
 	.resume = cortex_a_resume,
 	.step = cortex_a_step,
 
-	.assert_reset = cortex_a_assert_reset,
-	.deassert_reset = cortex_a_deassert_reset,
+	.reset_clear_internal_state = armv7a_reset_clear_internal_state,
+/*	.reset_prepare_trigger = cortex_a_reset_prepare_trigger,*/
+/*	.assert_reset = cortex_a_assert_reset,*/
+/*	.deassert_reset = cortex_a_deassert_reset,*/
 
 	/* REVISIT allow exporting VFP3 registers ... */
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
@@ -3587,8 +3591,10 @@ struct target_type cortexr4_target = {
 	.resume = cortex_a_resume,
 	.step = cortex_a_step,
 
-	.assert_reset = cortex_a_assert_reset,
-	.deassert_reset = cortex_a_deassert_reset,
+	.reset_clear_internal_state = armv7a_reset_clear_internal_state,
+/*	.reset_prepare_trigger = cortex_a_reset_prepare_trigger,*/
+/*	.assert_reset = cortex_a_assert_reset,*/
+/*	.deassert_reset = cortex_a_deassert_reset,*/
 
 	/* REVISIT allow exporting VFP3 registers ... */
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
