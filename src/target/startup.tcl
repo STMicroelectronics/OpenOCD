@@ -154,6 +154,32 @@ proc arp_reset_default_handler { phase target } {
 	}
 }
 
+proc arp_reset_halt_default_handler { target } {
+	# Wait upto 1 second for target to halt.  Why 1sec? Cause
+	# the JTAG tap reset signal might be hooked to a slow
+	# resistor/capacitor circuit - and it might take a while
+	# to charge
+	catch { $target arp_waitstate halted 1000 }
+}
+
+# Utility to make 'reset halt' work as reset;halt on a target
+# It does not prevent running code after reset
+proc arp_reset_simple_halter { target } {
+	$target arp_poll
+	set st [$target curstate]
+	if { $st eq "reset" } {
+		# we assume running state follows
+		# if reset accidentaly halt, waiting is useless
+		catch { $target arp_waitstate running 1000 }
+		set st [$target curstate]
+	}
+	if { $st eq "running" } {
+		echo "$target: Ran after reset and before halt..."
+		$target arp_halt
+	}
+	arp_reset_halt_default_handler $target
+}
+
 proc ocd_process_reset_inner { MODE } {
 	set targets [target names]
 
@@ -247,11 +273,7 @@ proc ocd_process_reset_inner { MODE } {
 				continue
 			}
 
-			# Wait upto 1 second for target to halt.  Why 1sec? Cause
-			# the JTAG tap reset signal might be hooked to a slow
-			# resistor/capacitor circuit - and it might take a while
-			# to charge
-			catch { $t arp_waitstate halted 1000 }
+			$t invoke-event reset-halt
 
 			# Did we succeed?
 			if { [$t curstate] ne "halted" } {
@@ -329,6 +351,7 @@ proc init_target_events {} {
 		set_default_target_event $t reset-assert-pre "arp_reset_default_handler pre $t"
 		set_default_target_event $t reset-assert-post "arp_reset_default_handler middle $t"
 		set_default_target_event $t reset-deassert-post "arp_reset_default_handler post $t"
+		set_default_target_event $t reset-halt "arp_reset_halt_default_handler $t"
 	}
 }
 
