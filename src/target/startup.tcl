@@ -41,7 +41,9 @@ proc arp_examine_one { target } {
 	if [arp_is_tap_enabled $target] {
 		$target invoke-event examine-start
 		set err [catch "$target arp_examine allow-defer"]
-		if {!$err} {
+		if { $err } {
+			$target invoke-event examine-fail
+		} else {
 			$target invoke-event examine-end
 		}
 	}
