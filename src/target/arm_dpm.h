@@ -188,8 +188,6 @@ void arm_dpm_report_wfar(struct arm_dpm *, uint32_t wfar);
 #define DSCR_DTR_RX_FULL            (0x1 << 30) /* bit 31 is reserved */
 
 #define DSCR_ENTRY(dscr)            ((dscr) & 0x3f)
-#define DSCR_RUN_MODE(dscr)         ((dscr) & 0x03)
-
 
 /* Methods of entry into debug mode */
 #define DSCR_ENTRY_HALT_REQ           (0x03)

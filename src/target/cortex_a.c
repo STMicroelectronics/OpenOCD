@@ -878,7 +878,7 @@ static int cortex_a_poll(struct target *target)
 		return retval;
 	cortex_a->cpudbg_dscr = dscr;
 
-	if (DSCR_RUN_MODE(dscr) == (DSCR_CORE_HALTED | DSCR_CORE_RESTARTED)) {
+	if (dscr & DSCR_CORE_HALTED) {
 		if (prev_target_state != TARGET_HALTED) {
 			/* We have a halting debug event */
 			LOG_DEBUG("Target halted");
