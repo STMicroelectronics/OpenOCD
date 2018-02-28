@@ -1901,52 +1901,92 @@ static int cortex_a_remove_breakpoint(struct target *target, struct breakpoint *
 	return ERROR_OK;
 }
 
-/*
- * Cortex-A Reset functions
+/**
+ * Prepares debug state before reset or under active SRST if possible.
+ *
+ * @param halt sets vector catch to stop core at reset
+ * @param trigger triggers PRCR_WARM_RESET.
  */
-
-#if 0
-static int cortex_a_assert_reset(struct target *target)
+static int cortex_a_reset_prepare_trigger(struct target *target, bool halt, bool trigger)
 {
 	struct armv7a_common *armv7a = target_to_armv7a(target);
+	uint32_t reg;
+	int retval;
 
-	LOG_DEBUG(" ");
+	/* cannot talk to target if it wasn't examined yet */
+	if (!target_was_examined(target))
+		return (halt || trigger) ? ERROR_FAIL : ERROR_OK;
 
-	/* FIXME when halt is requested, make it work somehow... */
+	/*
+	 * Some cores support connecting while SRST is asserted.
+	 * If RESET_HAS_SRST and RESET_SRST_NO_GATING are configured, core is
+	 * under SRST now
+	 */
 
-	/* This function can be called in "target not examined" state */
+	if (halt) {
+		/* Enable debug requests */
+		retval = mem_ap_read_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_DSCR, &reg);
+		if (retval != ERROR_OK)
+			return retval;
+		retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_DSCR, reg | DSCR_HALT_DBG_MODE);
+		if (retval != ERROR_OK)
+			return retval;
 
-	/* Issue some kind of warm reset. */
-	if (target_has_event_action(target, TARGET_EVENT_RESET_ASSERT))
-		target_handle_event(target, TARGET_EVENT_RESET_ASSERT);
-	else if (jtag_get_reset_config() & RESET_HAS_SRST) {
-		/* REVISIT handle "pulls" cases, if there's
-		 * hardware that needs them to work.
-		 */
+		/* set the reset vector catch */
+		retval = mem_ap_read_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_VCR, &reg);
+		if (retval != ERROR_OK)
+			return retval;
+		retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_VCR, reg | VCR_RESET);
+		if (retval != ERROR_OK)
+			return retval;
 
-		/*
-		 * FIXME: fix reset when transport is SWD. This is a temporary
-		 * work-around for release v0.10 that is not intended to stay!
-		 */
-		if (transport_is_swd() ||
-				(target->reset_halt && (jtag_get_reset_config() & RESET_SRST_NO_GATING)))
-			jtag_add_reset(0, 1);
-
+		/* halt the core */
+		retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_DRCR, DRCR_HALT);
+		if (retval != ERROR_OK)
+			return retval;
 	} else {
-		LOG_ERROR("%s: how to reset?", target_name(target));
-		return ERROR_FAIL;
+		/* clear the reset vector catch */
+		retval = mem_ap_read_atomic_u32(armv7a->debug_ap,
+				 armv7a->debug_base + CPUDBG_VCR, &reg);
+		if (retval != ERROR_OK)
+			return retval;
+		retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_VCR, reg & (~VCR_RESET));
+
+		/* resume the core if it was halted */
+		retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_DRCR, DRCR_RESTART);
+		if (retval != ERROR_OK)
+			return retval;
 	}
 
-	/* registers are now invalid */
-	if (target_was_examined(target))
-		register_cache_invalidate(armv7a->arm.core_cache);
+	if (trigger) {
+		/*
+		 * Use a standard Cortex-A software reset mechanism.
+		 * PRCR_WARM_RESET is 'recommended' but 'implementation defined'.
+		 * See DDI0406C ARMv7-A/R Architecture Reference Manual.
+		 * Usually this has the disadvantage of not resetting the peripherals,
+		 * so a reset-init event handler is needed to perform any peripheral
+		 * resets.
+		 */
+		retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_PRCR, PRCR_WARM_RESET);
+		if (retval != ERROR_OK)
+			return retval;
+	}
 
-	target->state = TARGET_RESET;
+	armv7a_reset_clear_internal_state(target);
 
 	return ERROR_OK;
 }
 
-static int cortex_a_deassert_reset(struct target *target)
+#if 0
+static int cortex_a_post_deassert_reset(struct target *target)
 {
 	int retval;
 
@@ -3511,9 +3551,8 @@ struct target_type cortexa_target = {
 	.step = cortex_a_step,
 
 	.reset_clear_internal_state = armv7a_reset_clear_internal_state,
-/*	.reset_prepare_trigger = cortex_a_reset_prepare_trigger,*/
-/*	.assert_reset = cortex_a_assert_reset,*/
-/*	.deassert_reset = cortex_a_deassert_reset,*/
+	.reset_prepare_trigger = cortex_a_reset_prepare_trigger,
+/*	.deassert_reset = cortex_a_post_deassert_reset,*/
 
 	/* REVISIT allow exporting VFP3 registers ... */
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
@@ -3592,9 +3631,8 @@ struct target_type cortexr4_target = {
 	.step = cortex_a_step,
 
 	.reset_clear_internal_state = armv7a_reset_clear_internal_state,
-/*	.reset_prepare_trigger = cortex_a_reset_prepare_trigger,*/
-/*	.assert_reset = cortex_a_assert_reset,*/
-/*	.deassert_reset = cortex_a_deassert_reset,*/
+	.reset_prepare_trigger = cortex_a_reset_prepare_trigger,
+/*	.deassert_reset = cortex_a_post_deassert_reset,*/
 
 	/* REVISIT allow exporting VFP3 registers ... */
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
