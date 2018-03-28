@@ -1949,6 +1949,12 @@ static int cortex_a_reset_prepare_trigger(struct target *target, bool halt, bool
 				armv7a->debug_base + CPUDBG_DRCR, DRCR_HALT);
 		if (retval != ERROR_OK)
 			return retval;
+
+		/* hold core in reset */
+		retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_PRCR, PRCR_HOLD_NON_DEBUG_RESET);
+		if (retval != ERROR_OK)
+			return retval;
 	} else {
 		/* clear the reset vector catch */
 		retval = mem_ap_read_atomic_u32(armv7a->debug_ap,
@@ -1963,6 +1969,12 @@ static int cortex_a_reset_prepare_trigger(struct target *target, bool halt, bool
 				armv7a->debug_base + CPUDBG_DRCR, DRCR_RESTART);
 		if (retval != ERROR_OK)
 			return retval;
+
+		/* resume the core if it was holding the reset */
+		retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+				armv7a->debug_base + CPUDBG_PRCR, 0);
+		if (retval != ERROR_OK)
+			return retval;
 	}
 
 	if (trigger) {
@@ -1974,8 +1986,9 @@ static int cortex_a_reset_prepare_trigger(struct target *target, bool halt, bool
 		 * so a reset-init event handler is needed to perform any peripheral
 		 * resets.
 		 */
+		reg = (halt ? PRCR_HOLD_NON_DEBUG_RESET : 0) | PRCR_WARM_RESET;
 		retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
-				armv7a->debug_base + CPUDBG_PRCR, PRCR_WARM_RESET);
+				armv7a->debug_base + CPUDBG_PRCR, reg);
 		if (retval != ERROR_OK)
 			return retval;
 	}
@@ -1985,15 +1998,11 @@ static int cortex_a_reset_prepare_trigger(struct target *target, bool halt, bool
 	return ERROR_OK;
 }
 
-#if 0
 static int cortex_a_post_deassert_reset(struct target *target)
 {
+	struct armv7a_common *armv7a = target_to_armv7a(target);
+	uint32_t reg;
 	int retval;
-
-	LOG_DEBUG(" ");
-
-	/* be certain SRST is off */
-	jtag_add_reset(0, 0);
 
 	if (target_was_examined(target)) {
 		retval = cortex_a_poll(target);
@@ -2001,22 +2010,62 @@ static int cortex_a_post_deassert_reset(struct target *target)
 			return retval;
 	}
 
-	if (target->reset_halt) {
-		if (target->state != TARGET_HALTED) {
-			LOG_WARNING("%s: ran after reset and before halt ...",
-				target_name(target));
-			if (target_was_examined(target)) {
-				retval = target_halt(target);
-				if (retval != ERROR_OK)
-					return retval;
-			} else
-				target->state = TARGET_UNKNOWN;
-		}
+	if (!target->reset_halt)
+		return ERROR_OK;
+
+	retval = cortex_a_poll(target);
+	if (retval != ERROR_OK)
+		return retval;
+
+	if (target->state == TARGET_HALTED)
+		return ERROR_OK;
+
+	/* Enable debug requests */
+	retval = mem_ap_read_atomic_u32(armv7a->debug_ap,
+			armv7a->debug_base + CPUDBG_DSCR, &reg);
+	if (retval != ERROR_OK)
+		return retval;
+	retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+			armv7a->debug_base + CPUDBG_DSCR, reg | DSCR_HALT_DBG_MODE);
+	if (retval != ERROR_OK)
+		return retval;
+
+	/* halt the core while reset is on hold */
+	retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+			armv7a->debug_base + CPUDBG_DRCR, DRCR_HALT);
+	if (retval != ERROR_OK)
+		return retval;
+
+	/* resume the core from reset hold */
+	retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+			 armv7a->debug_base + CPUDBG_PRCR, 0);
+	if (retval != ERROR_OK)
+		return retval;
+
+	/* clear the reset vector-catch */
+	retval = mem_ap_read_atomic_u32(armv7a->debug_ap,
+			armv7a->debug_base + CPUDBG_VCR, &reg);
+	if (retval != ERROR_OK)
+		return retval;
+	retval = mem_ap_write_atomic_u32(armv7a->debug_ap,
+			armv7a->debug_base + CPUDBG_VCR, reg & (~VCR_RESET));
+	if (retval != ERROR_OK)
+		return retval;
+
+	retval = cortex_a_poll(target);
+	if (retval != ERROR_OK)
+		return retval;
+
+	if (target->state != TARGET_HALTED) {
+		LOG_WARNING("%s: ran after reset and before halt ...",
+			target_name(target));
+		retval = target_halt(target);
+		if (retval != ERROR_OK)
+			return retval;
 	}
 
 	return ERROR_OK;
 }
-#endif
 
 static int cortex_a_set_dcc_mode(struct target *target, uint32_t mode, uint32_t *dscr)
 {
@@ -3552,7 +3601,7 @@ struct target_type cortexa_target = {
 
 	.reset_clear_internal_state = armv7a_reset_clear_internal_state,
 	.reset_prepare_trigger = cortex_a_reset_prepare_trigger,
-/*	.deassert_reset = cortex_a_post_deassert_reset,*/
+	.deassert_reset = cortex_a_post_deassert_reset,
 
 	/* REVISIT allow exporting VFP3 registers ... */
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
@@ -3632,7 +3681,7 @@ struct target_type cortexr4_target = {
 
 	.reset_clear_internal_state = armv7a_reset_clear_internal_state,
 	.reset_prepare_trigger = cortex_a_reset_prepare_trigger,
-/*	.deassert_reset = cortex_a_post_deassert_reset,*/
+	.deassert_reset = cortex_a_post_deassert_reset,
 
 	/* REVISIT allow exporting VFP3 registers ... */
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
