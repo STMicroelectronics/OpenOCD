@@ -30,5 +30,7 @@ proc swj_newdap {chip tag args} {
      eval jtag newtap $chip $tag $args
  } elseif [using_swd] {
      eval swd newdap $chip $tag $args
+ } elseif { [using_stlink_jtag] || [using_stlink_swd] } {
+     eval stlink_dap newdap $chip $tag $args
  }
 }

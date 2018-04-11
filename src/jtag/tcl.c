@@ -549,7 +549,7 @@ static int jim_newtap_cmd(Jim_GetOptInfo *goi)
 	LOG_DEBUG("Creating New Tap, Chip: %s, Tap: %s, Dotted: %s, %d params",
 		pTap->chip, pTap->tapname, pTap->dotted_name, goi->argc);
 
-	if (!transport_is_jtag()) {
+	if (!transport_is_jtag() && !transport_is_stlink_jtag()) {
 		/* SWD doesn't require any JTAG tap parameters */
 		pTap->enabled = true;
 		jtag_tap_init(pTap);
@@ -684,9 +684,9 @@ static int jim_jtag_arp_init_reset(Jim_Interp *interp, int argc, Jim_Obj *const 
 		return JIM_ERR;
 	}
 	struct command_context *context = current_command_context(interp);
-	if (transport_is_jtag())
+	if (transport_is_jtag() || transport_is_stlink_jtag())
 		e = jtag_init_reset(context);
-	else if (transport_is_swd())
+	else if (transport_is_swd() || transport_is_stlink_swd())
 		e = swd_init_reset(context);
 
 	if (e != ERROR_OK) {

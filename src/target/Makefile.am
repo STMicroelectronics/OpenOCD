@@ -105,6 +105,10 @@ ARM_DEBUG_SRC = \
 	%D%/etm_dummy.c \
 	%D%/arm_cti.c
 
+if HLADAPTER
+ARM_DEBUG_SRC += %D%/adi_v5_stlink.c
+endif
+
 AVR32_SRC = \
 	%D%/avr32_ap7k.c \
 	%D%/avr32_jtag.c \

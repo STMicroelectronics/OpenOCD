@@ -34,6 +34,7 @@ static LIST_HEAD(all_dap);
 
 extern const struct dap_ops swd_dap_ops;
 extern const struct dap_ops jtag_dp_ops;
+extern const struct dap_ops stlink_dap_ops;
 extern struct jtag_interface *jtag_interface;
 
 /* DAP command support */
@@ -118,6 +119,13 @@ static int dap_init_all(void)
 		if (transport_is_swd()) {
 			dap->ops = &swd_dap_ops;
 			obj->swd = jtag_interface->swd;
+#if BUILD_HLADAPTER_STLINK == 1
+		} else if (transport_is_stlink_swd()) {
+			dap->ops = &stlink_dap_ops;
+			obj->swd = jtag_interface->swd;
+		} else if (transport_is_stlink_jtag()) {
+			dap->ops = &stlink_dap_ops;
+#endif
 		} else
 			dap->ops = &jtag_dp_ops;
 

@@ -306,17 +306,27 @@ proc ocd_process_reset_inner { MODE } {
 
 proc using_jtag {} {
 	set _TRANSPORT [ transport select ]
-	expr { [ string first "jtag" $_TRANSPORT ] != -1 }
+	expr { [ string equal "jtag" $_TRANSPORT ] != 0 }
 }
 
 proc using_swd {} {
 	set _TRANSPORT [ transport select ]
-	expr { [ string first "swd" $_TRANSPORT ] != -1 }
+	expr { [ string equal "swd" $_TRANSPORT ] != 0 }
 }
 
 proc using_hla {} {
 	set _TRANSPORT [ transport select ]
-	expr { [ string first "hla" $_TRANSPORT ] != -1 }
+	expr { [ string equal "hla" $_TRANSPORT ] != 0 }
+}
+
+proc using_stlink_jtag {} {
+	set _TRANSPORT [ transport select ]
+	expr { [ string equal "stlink_jtag" $_TRANSPORT ] != 0 }
+}
+
+proc using_stlink_swd {} {
+	set _TRANSPORT [ transport select ]
+	expr { [ string equal "stlink_swd" $_TRANSPORT ] != 0 }
 }
 
 #########

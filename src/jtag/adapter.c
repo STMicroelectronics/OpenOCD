@@ -523,9 +523,9 @@ static int jim_arp_init_reset(Jim_Interp *interp, int argc, Jim_Obj*const *argv)
 		return JIM_ERR;
 	}
 	struct command_context *context = current_command_context(interp);
-	if (transport_is_jtag())
+	if (transport_is_jtag() || transport_is_stlink_jtag())
 		e = jtag_init_reset(context);
-	else if (transport_is_swd())
+	else if (transport_is_swd() || transport_is_stlink_swd())
 		e = swd_init_reset(context);
 
 	if (e != ERROR_OK) {
