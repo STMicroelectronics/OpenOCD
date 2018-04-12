@@ -158,7 +158,17 @@ static int stlink_queue_ap_abort(struct adiv5_dap *dap, uint8_t *ack)
 static int stlink_run(struct adiv5_dap *dap)
 {
 	/* Here no LOG_DEBUG. This is called continuously! */
-	return ERROR_OK;
+
+	/*
+	 * ST-Link returns immediately after a DAP write, without waiting for it
+	 * to complete.
+	 * FIXME: Here we should check if the last operation is a read or a
+	 * write, and issue the dummy read only to complete a write!
+	 *
+	 * Run a dummy read to DP_RDBUFF, as suggested in
+	 * http://infocenter.arm.com/help/topic/com.arm.doc.faqs/ka16363.html
+	 */
+	return stlink_queue_dp_read(dap, DP_RDBUFF, NULL);
 }
 
 const struct dap_ops stlink_dap_ops = {
