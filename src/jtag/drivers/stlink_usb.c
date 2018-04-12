@@ -30,6 +30,7 @@
 #endif
 
 /* project specific includes */
+#include <helper/bits.h>
 #include <helper/binarybuffer.h>
 #include <jtag/interface.h>
 #include <jtag/hla/hla_layout.h>
@@ -2242,7 +2243,6 @@ int stlink_config_trace(void *handle, bool enabled, enum tpiu_pin_protocol pin_p
 }
 
 /** */
-__attribute__((unused))
 static int stlink_usb_init_access_point(void *handle,
 		unsigned char access_point_id, unsigned char resource)
 {
@@ -2266,7 +2266,6 @@ static int stlink_usb_init_access_point(void *handle,
 }
 
 /** */
-__attribute__((unused))
 static int stlink_usb_close_access_point(void *handle,
 		unsigned char access_point_id)
 {
@@ -2387,18 +2386,67 @@ static struct hl_interface_param_s stlink_dap_param = {
 	.vid = {STLINK_VID,    STLINK_VID,      0},
 	.pid = {STLINK_V2_PID, STLINK_V2_1_PID, 0},
 };
+static DECLARE_BITMAP(opened_ap, DP_APSEL_MAX);
+
+static int stlink_dap_open_ap(unsigned short apsel)
+{
+	int retval;
+
+	if (apsel > DP_APSEL_MAX)
+		return ERROR_OK;
+
+	if (test_bit(apsel, opened_ap))
+		return ERROR_OK;
+
+	retval = stlink_usb_init_access_point(stlink_dap_handle, apsel, 0);
+	if (retval != ERROR_OK)
+		return retval;
+
+	LOG_DEBUG("AP %d enabled", apsel);
+	set_bit(apsel, opened_ap);
+	return ERROR_OK;
+}
+
+static int stlink_dap_closeall_ap(void)
+{
+	int retval, apsel;
+
+	for (apsel = 0; apsel <= DP_APSEL_MAX; apsel++) {
+		if (!test_bit(apsel, opened_ap))
+			continue;
+		retval = stlink_usb_close_access_point(stlink_dap_handle, apsel);
+		if (retval != ERROR_OK)
+			return retval;
+		clear_bit(apsel, opened_ap);
+	}
+	return ERROR_OK;
+}
 
 int stlink_dap_dap_read(unsigned short dap_port, unsigned short addr, uint32_t *val)
 {
-	uint32_t trash;
+	uint32_t dummy;
+	int retval;
+
+	/* Skip opening DAP if we are only scanning to look for an AP */
+	if (dap_port <= DP_APSEL_MAX && addr != AP_REG_IDR) {
+		retval = stlink_dap_open_ap(dap_port);
+		if (retval != ERROR_OK)
+			return retval;
+	}
 
 	if (!val)
-		val = &trash;
+		val = &dummy;
 	return stlink_read_dap_register(stlink_dap_handle, dap_port, addr, val);
 }
 
 int stlink_dap_dap_write(unsigned short dap_port, unsigned short addr, uint32_t val)
 {
+	int retval;
+
+	retval = stlink_dap_open_ap(dap_port);
+	if (retval != ERROR_OK)
+		return retval;
+
 	return stlink_write_dap_register(stlink_dap_handle, dap_port, addr, val);
 }
 
@@ -2502,7 +2550,6 @@ static int stlink_dap_execute_queue(void)
 
 static int stlink_dap_init(void)
 {
-	int retval;
 	enum reset_types jtag_reset_config = jtag_get_reset_config();
 
 	LOG_INFO("stlink_dap_init()");
@@ -2513,25 +2560,7 @@ static int stlink_dap_init(void)
 		else
 			LOG_WARNING("\'srst_nogate\' reset_config option is required");
 	}
-	retval = stlink_usb_open(&stlink_dap_param, (void **)&stlink_dap_handle);
-	if (retval != ERROR_OK)
-		return retval;
-
-	retval = stlink_usb_init_access_point(stlink_dap_handle, 0, 0);
-	LOG_INFO("stlink_usb_init_access_point(0) = %d", retval);
-//	if (retval == ERROR_OK)
-		retval = stlink_usb_init_access_point(stlink_dap_handle, 1, 0);
-		LOG_INFO("stlink_usb_init_access_point(1) = %d", retval);
-//	if (retval == ERROR_OK)
-		retval = stlink_usb_init_access_point(stlink_dap_handle, 2, 0);
-		LOG_INFO("stlink_usb_init_access_point(2) = %d", retval);
-//	if (retval == ERROR_OK)
-		retval = stlink_usb_init_access_point(stlink_dap_handle, 3, 0);
-		LOG_INFO("stlink_usb_init_access_point(3) = %d", retval);
-	if (retval != ERROR_OK)
-		return retval;
-
-	return ERROR_OK;
+	return stlink_usb_open(&stlink_dap_param, (void **)&stlink_dap_handle);
 }
 
 static int stlink_dap_quit(void)
@@ -2540,18 +2569,11 @@ static int stlink_dap_quit(void)
 
 	LOG_INFO("stlink_dap_quit()");
 
-	retval = stlink_usb_close_access_point(stlink_dap_handle, 0);
-	LOG_INFO("stlink_usb_close_access_point(0) = %d", retval);
-	retval = stlink_usb_close_access_point(stlink_dap_handle, 1);
-	LOG_INFO("stlink_usb_close_access_point(1) = %d", retval);
-	retval = stlink_usb_close_access_point(stlink_dap_handle, 2);
-	LOG_INFO("stlink_usb_close_access_point(2) = %d", retval);
-	retval = stlink_usb_close_access_point(stlink_dap_handle, 3);
-	LOG_INFO("stlink_usb_close_access_point(3) = %d", retval);
+	retval = stlink_dap_closeall_ap();
+	if (retval != ERROR_OK)
+		return retval;
 
-	retval = stlink_usb_close(stlink_dap_handle);
-
-	return retval;
+	return stlink_usb_close(stlink_dap_handle);
 }
 
 static const struct command_registration stlink_dap_command_handlers[] = {
