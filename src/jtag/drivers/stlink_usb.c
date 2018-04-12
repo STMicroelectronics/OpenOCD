@@ -36,13 +36,12 @@
 #include <jtag/hla/hla_layout.h>
 #include <jtag/hla/hla_transport.h>
 #include <jtag/hla/hla_interface.h>
+#include <jtag/swd.h>
 #include <target/target.h>
 
 #include <target/cortex_m.h>
 
 #include "libusb_common.h"
-
-#include <jtag/swd.h>
 
 #define ENDPOINT_IN  0x80
 #define ENDPOINT_OUT 0x00
@@ -225,7 +224,7 @@ struct stlink_usb_handle_s {
 #define STLINK_DEBUG_APIV1_WRITEDEBUGREG   0x0f
 #define STLINK_DEBUG_APIV1_SETWATCHPOINT   0x10
 
-#define STLINK_DEBUG_ENTER_JTAG            0x00 // 0xa4
+#define STLINK_DEBUG_ENTER_JTAG            0x00
 #define STLINK_DEBUG_ENTER_SWD             0xa3
 
 #define STLINK_DEBUG_APIV1_ENTER           0x20
@@ -727,7 +726,6 @@ static int stlink_usb_current_mode(void *handle, uint8_t *mode)
 		return res;
 
 	*mode = h->databuf[0];
-	LOG_INFO("Current mode = %d", *mode);
 
 	return ERROR_OK;
 }
@@ -751,7 +749,7 @@ static int stlink_usb_mode_enter(void *handle, enum stlink_mode type)
 
 	switch (type) {
 		case STLINK_MODE_DEBUG_JTAG:
-			LOG_INFO("stlink_usb_mode_enter(JTAG)");
+			LOG_DEBUG("stlink_usb_mode_enter(JTAG)");
 			h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
 			if (h->jtag_api == STLINK_JTAG_API_V1)
 				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV1_ENTER;
@@ -760,7 +758,7 @@ static int stlink_usb_mode_enter(void *handle, enum stlink_mode type)
 			h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_ENTER_JTAG;
 			break;
 		case STLINK_MODE_DEBUG_SWD:
-			LOG_INFO("stlink_usb_mode_enter(SWD)");
+			LOG_DEBUG("stlink_usb_mode_enter(SWD)");
 			h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
 			if (h->jtag_api == STLINK_JTAG_API_V1)
 				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV1_ENTER;
@@ -769,7 +767,7 @@ static int stlink_usb_mode_enter(void *handle, enum stlink_mode type)
 			h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_ENTER_SWD;
 			break;
 		case STLINK_MODE_DEBUG_SWIM:
-			LOG_INFO("stlink_usb_mode_enter(SWIM)");
+			LOG_DEBUG("stlink_usb_mode_enter(SWIM)");
 			h->cmdbuf[h->cmdidx++] = STLINK_SWIM_COMMAND;
 			h->cmdbuf[h->cmdidx++] = STLINK_SWIM_ENTER;
 			/* no answer for this function... */
@@ -797,7 +795,6 @@ static int stlink_usb_mode_leave(void *handle, enum stlink_mode type)
 	switch (type) {
 		case STLINK_MODE_DEBUG_JTAG:
 		case STLINK_MODE_DEBUG_SWD:
-			LOG_INFO("STLINK_DEBUG_EXIT");
 			h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
 			h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_EXIT;
 			break;
@@ -908,7 +905,7 @@ static int stlink_usb_init_mode(void *handle, bool connect_under_reset)
 		}
 	}
 
-	LOG_INFO("MODE: 0x%02X", mode);
+	LOG_DEBUG("MODE: 0x%02X", mode);
 
 	/* set selected mode */
 	emode = stlink_get_mode(h->transport);
@@ -946,7 +943,7 @@ static int stlink_usb_init_mode(void *handle, bool connect_under_reset)
 	if (res != ERROR_OK)
 		return res;
 
-	LOG_INFO("MODE: 0x%02X", mode);
+	LOG_DEBUG("MODE: 0x%02X", mode);
 
 	return ERROR_OK;
 }
@@ -2000,13 +1997,10 @@ static int stlink_usb_close(void *handle)
 				break;
 		}
 
-		if (emode != STLINK_MODE_UNKNOWN) {
-			res = stlink_usb_mode_leave(handle, emode);
-			LOG_INFO("res=%d", res);
-			res = stlink_usb_current_mode(handle, &mode);
+		if (emode != STLINK_MODE_UNKNOWN)
+			stlink_usb_mode_leave(handle, emode);
 			/* do not check return code, it prevent
 			us from closing jtag_libusb */
-		}
 	}
 
 	if (h && h->fd)
@@ -2452,7 +2446,7 @@ int stlink_dap_dap_write(unsigned short dap_port, unsigned short addr, uint32_t 
 
 static int stlink_dap_swd_init(void)
 {
-	LOG_ERROR("stlink_dap_swd_init()");
+	LOG_DEBUG("stlink_dap_swd_init()");
 	stlink_dap_param.transport = HL_TRANSPORT_SWD;
 	return ERROR_OK;
 }
@@ -2519,7 +2513,7 @@ static void stlink_dap_execute_command(struct jtag_command *cmd)
 {
 	switch (cmd->type) {
 	case JTAG_RESET:
-		LOG_ERROR("stlink_usb_assert trst(%d) srst(%d)", !cmd->cmd.reset->trst, !cmd->cmd.reset->srst);
+		LOG_DEBUG("stlink_usb_assert trst(%d) srst(%d)", !cmd->cmd.reset->trst, !cmd->cmd.reset->srst);
 		if (cmd->cmd.reset->trst)
 			stlink_usb_reset(stlink_dap_handle);
 		stlink_usb_assert_srst(stlink_dap_handle, cmd->cmd.reset->srst ? STLINK_DEBUG_APIV2_DRIVE_NRST_LOW : STLINK_DEBUG_APIV2_DRIVE_NRST_HIGH);
@@ -2538,9 +2532,9 @@ static int stlink_dap_execute_queue(void)
 {
 	struct jtag_command *cmd = jtag_command_queue;
 
-	LOG_ERROR("stlink_dap_execute_queue()");
+	LOG_DEBUG("stlink_dap_execute_queue()");
 
-	 while (cmd != NULL) {
+	while (cmd != NULL) {
 		stlink_dap_execute_command(cmd);
 		cmd = cmd->next;
 	}
@@ -2552,7 +2546,7 @@ static int stlink_dap_init(void)
 {
 	enum reset_types jtag_reset_config = jtag_get_reset_config();
 
-	LOG_INFO("stlink_dap_init()");
+	LOG_DEBUG("stlink_dap_init()");
 
 	if (jtag_reset_config & RESET_CNCT_UNDER_SRST) {
 		if (jtag_reset_config & RESET_SRST_NO_GATING)
@@ -2567,7 +2561,7 @@ static int stlink_dap_quit(void)
 {
 	int retval;
 
-	LOG_INFO("stlink_dap_quit()");
+	LOG_DEBUG("stlink_dap_quit()");
 
 	retval = stlink_dap_closeall_ap();
 	if (retval != ERROR_OK)
