@@ -51,7 +51,7 @@ int stlink_dap_dap_write(unsigned short dap_port, unsigned short addr, uint32_t 
 
 static int stlink_check_reconnect(struct adiv5_dap *dap);
 
-static int stlink_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
+static int stlink_swd_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
 		uint32_t *data)
 {
 	int retval = stlink_check_reconnect(dap);
@@ -64,7 +64,7 @@ static int stlink_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
 	return retval;
 }
 
-static int stlink_queue_dp_write(struct adiv5_dap *dap, unsigned reg,
+static int stlink_swd_queue_dp_write(struct adiv5_dap *dap, unsigned reg,
 		uint32_t data)
 {
 	int retval = stlink_check_reconnect(dap);
@@ -81,7 +81,7 @@ static int stlink_queue_dp_write(struct adiv5_dap *dap, unsigned reg,
 	return retval;
 }
 
-static int stlink_queue_ap_read(struct adiv5_ap *ap, unsigned reg,
+static int stlink_swd_queue_ap_read(struct adiv5_ap *ap, unsigned reg,
 		uint32_t *data)
 {
 	struct adiv5_dap *dap = ap->dap;
@@ -95,7 +95,7 @@ static int stlink_queue_ap_read(struct adiv5_ap *ap, unsigned reg,
 	return retval;
 }
 
-static int stlink_queue_ap_write(struct adiv5_ap *ap, unsigned reg,
+static int stlink_swd_queue_ap_write(struct adiv5_ap *ap, unsigned reg,
 		uint32_t data)
 {
 	struct adiv5_dap *dap = ap->dap;
@@ -131,7 +131,7 @@ static int stlink_connect(struct adiv5_dap *dap)
 	dap->do_reconnect = false;
 	dap_invalidate_cache(dap);
 
-	retval = stlink_queue_dp_read(dap, DP_DPIDR, &dpidr);
+	retval = dap->ops->queue_dp_read(dap, DP_DPIDR, &dpidr);
 	if (retval == ERROR_OK) {
 		LOG_INFO("SWD DPIDR %#8.8" PRIx32, dpidr);
 		retval = dap_dp_init(dap);
@@ -149,13 +149,13 @@ static int stlink_check_reconnect(struct adiv5_dap *dap)
 	return ERROR_OK;
 }
 
-static int stlink_queue_ap_abort(struct adiv5_dap *dap, uint8_t *ack)
+static int stlink_swd_queue_ap_abort(struct adiv5_dap *dap, uint8_t *ack)
 {
-	LOG_ERROR("stlink_queue_ap_abort()");
+	LOG_ERROR("stlink_swd_queue_ap_abort()");
 	return ERROR_OK;
 }
 
-static int stlink_run(struct adiv5_dap *dap)
+static int stlink_swd_run(struct adiv5_dap *dap)
 {
 	/* Here no LOG_DEBUG. This is called continuously! */
 
@@ -168,17 +168,42 @@ static int stlink_run(struct adiv5_dap *dap)
 	 * Run a dummy read to DP_RDBUFF, as suggested in
 	 * http://infocenter.arm.com/help/topic/com.arm.doc.faqs/ka16363.html
 	 */
-	return stlink_queue_dp_read(dap, DP_RDBUFF, NULL);
+	return stlink_swd_queue_dp_read(dap, DP_RDBUFF, NULL);
 }
 
-const struct dap_ops stlink_dap_ops = {
+const struct dap_ops stlink_dap_swd_ops = {
 	.connect = stlink_connect,
-	.queue_dp_read = stlink_queue_dp_read,
-	.queue_dp_write = stlink_queue_dp_write,
-	.queue_ap_read = stlink_queue_ap_read,
-	.queue_ap_write = stlink_queue_ap_write,
-	.queue_ap_abort = stlink_queue_ap_abort,
-	.run = stlink_run,
+	.queue_dp_read = stlink_swd_queue_dp_read,
+	.queue_dp_write = stlink_swd_queue_dp_write,
+	.queue_ap_read = stlink_swd_queue_ap_read,
+	.queue_ap_write = stlink_swd_queue_ap_write,
+	.queue_ap_abort = stlink_swd_queue_ap_abort,
+	.run = stlink_swd_run,
+};
+
+static int stlink_jtag_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
+		uint32_t *data)
+{
+	int retval = stlink_check_reconnect(dap);
+	if (retval != ERROR_OK)
+		return retval;
+
+	retval = stlink_dap_dap_read(STLINK_DEBUG_PORT, reg, NULL);
+	if (retval != ERROR_OK) {
+		dap->do_reconnect = true;
+		return retval;
+	}
+	return stlink_swd_queue_dp_read(dap, DP_RDBUFF, data);
+}
+
+const struct dap_ops stlink_dap_jtag_ops = {
+	.connect = stlink_connect,
+	.queue_dp_read = stlink_jtag_queue_dp_read,
+	.queue_dp_write = stlink_swd_queue_dp_write,
+	.queue_ap_read = stlink_swd_queue_ap_read,
+	.queue_ap_write = stlink_swd_queue_ap_write,
+	.queue_ap_abort = stlink_swd_queue_ap_abort,
+	.run = stlink_swd_run,
 };
 
 static const struct command_registration stlink_commands[] = {
