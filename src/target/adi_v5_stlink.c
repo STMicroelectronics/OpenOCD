@@ -247,7 +247,7 @@ static int stlink_swd_select(struct command_context *ctx)
 	const struct swd_driver *swd = jtag_interface->swd;
 	int retval;
 
-	LOG_ERROR("stlink_swd_select()");
+	LOG_DEBUG("stlink_swd_select()");
 
 	retval = register_commands(ctx, NULL, stlink_handlers);
 	if (retval != ERROR_OK)
@@ -272,7 +272,7 @@ static int stlink_swd_select(struct command_context *ctx)
 
 static int stlink_init(struct command_context *ctx)
 {
-	LOG_ERROR("stlink_init()");
+	LOG_DEBUG("stlink_init()");
 	return ERROR_OK;
 }
 
