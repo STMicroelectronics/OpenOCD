@@ -235,7 +235,7 @@ static const struct command_registration stlink_handlers[] = {
 
 static int stlink_jtag_select(struct command_context *ctx)
 {
-	LOG_ERROR("stlink_jtag_select()");
+	LOG_DEBUG("stlink_jtag_select()");
 
 	return register_commands(ctx, NULL, stlink_handlers);
 }
