@@ -3095,19 +3095,23 @@ static int cortex_a_examine_first(struct target *target)
 
 	armv7a->debug_ap->memaccess_tck = 80;
 
-	/* Search for the AHB-AB.
-	 * REVISIT: We should search for AXI-AP as well and make sure the AP's MEMTYPE says it
+	/* Search for the AXI-AP or the AHB-AP.
+	 * REVISIT: We should make sure the AP's MEMTYPE says it
 	 * can access system memory. */
 	armv7a->memory_ap_available = false;
-	retval = dap_find_ap(swjdp, AP_TYPE_AHB_AP, &armv7a->memory_ap);
-	if (retval == ERROR_OK) {
+	retval = dap_find_ap(swjdp, AP_TYPE_AXI_AP, &armv7a->memory_ap);
+	if (retval == ERROR_OK)
 		retval = mem_ap_init(armv7a->memory_ap);
+	if (retval != ERROR_OK) {
+		retval = dap_find_ap(swjdp, AP_TYPE_AHB_AP, &armv7a->memory_ap);
 		if (retval == ERROR_OK)
-			armv7a->memory_ap_available = true;
+			retval = mem_ap_init(armv7a->memory_ap);
 	}
 	if (retval != ERROR_OK) {
-		/* AHB-AP not found or unavailable - use the CPU */
-		LOG_DEBUG("No AHB-AP available for memory access");
+		/* AHB-AP and AXI-AP not found or unavailable - use the CPU */
+		LOG_DEBUG("Nor AHB-AP nor AXI-AP available for memory access");
+	} else {
+		armv7a->memory_ap_available = true;
 	}
 
 	if (!target->dbgbase_set) {
