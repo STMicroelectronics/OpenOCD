@@ -2004,11 +2004,9 @@ static int cortex_a_post_deassert_reset(struct target *target)
 	uint32_t reg;
 	int retval;
 
-	if (target_was_examined(target)) {
-		retval = cortex_a_poll(target);
-		if (retval != ERROR_OK)
-			return retval;
-	}
+	/* cannot talk to target if it wasn't examined yet */
+	if (!target_was_examined(target))
+		return ERROR_OK;
 
 	if (!target->reset_halt)
 		return ERROR_OK;
