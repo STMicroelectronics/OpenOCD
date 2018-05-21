@@ -2054,6 +2054,13 @@ static int cortex_a_post_deassert_reset(struct target *target)
 	if (retval != ERROR_OK)
 		return retval;
 
+	for (int i = 0; i < 50 && target->state != TARGET_HALTED; i++) {
+		alive_sleep(1);
+		retval = cortex_a_poll(target);
+		if (retval != ERROR_OK)
+			return retval;
+	}
+
 	if (target->state != TARGET_HALTED) {
 		LOG_WARNING("%s: ran after reset and before halt ...",
 			target_name(target));
