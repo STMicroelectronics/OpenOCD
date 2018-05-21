@@ -962,7 +962,7 @@ int cortex_m_reset_prepare_trigger(struct target *target, bool halt, bool trigge
 
 	/* cannot talk to target if it wasn't examined yet */
 	if (!target_was_examined(target))
-		return (halt || trigger) ? ERROR_FAIL : ERROR_OK;
+		return ERROR_OK;
 
 	/* Some cores support connecting while srst is asserted.
 	 * If RESET_HAS_SRST and RESET_SRST_NO_GATING are configured, core is under SRST now */
