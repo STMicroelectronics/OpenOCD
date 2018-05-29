@@ -273,6 +273,8 @@ static int stlink_swd_select(struct command_context *ctx)
 static int stlink_init(struct command_context *ctx)
 {
 	LOG_DEBUG("stlink_init()");
+
+	adapter_deassert_reset();
 	return ERROR_OK;
 }
 
