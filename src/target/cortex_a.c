@@ -2011,13 +2011,6 @@ static int cortex_a_post_deassert_reset(struct target *target)
 	if (!target->reset_halt)
 		return ERROR_OK;
 
-	retval = cortex_a_poll(target);
-	if (retval != ERROR_OK)
-		return retval;
-
-	if (target->state == TARGET_HALTED)
-		return ERROR_OK;
-
 	/* Enable debug requests */
 	retval = mem_ap_read_atomic_u32(armv7a->debug_ap,
 			armv7a->debug_base + CPUDBG_DSCR, &reg);
