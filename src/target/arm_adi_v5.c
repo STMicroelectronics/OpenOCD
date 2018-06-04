@@ -331,6 +331,7 @@ static int mem_ap_write(struct adiv5_ap *ap, const uint8_t *buffer, uint32_t siz
 	const uint32_t csw_addrincr = addrinc ? CSW_ADDRINC_SINGLE : CSW_ADDRINC_OFF;
 	uint32_t csw_size;
 	uint32_t addr_xor;
+	uint32_t j = 0;
 	int retval = ERROR_OK;
 
 	/* TI BE-32 Quirks mode:
@@ -424,6 +425,9 @@ static int mem_ap_write(struct adiv5_ap *ap, const uint8_t *buffer, uint32_t siz
 		mem_ap_update_tar_cache(ap);
 		if (addrinc)
 			address += this_size;
+
+		if ((j++ % 32) == 0)
+			keep_alive();
 	}
 
 	/* REVISIT: Might want to have a queued version of this function that does not run. */
@@ -461,6 +465,7 @@ static int mem_ap_read(struct adiv5_ap *ap, uint8_t *buffer, uint32_t size, uint
 	const uint32_t csw_addrincr = addrinc ? CSW_ADDRINC_SINGLE : CSW_ADDRINC_OFF;
 	uint32_t csw_size;
 	uint32_t address = adr;
+	uint32_t j = 0;
 	int retval = ERROR_OK;
 
 	/* TI BE-32 Quirks mode:
@@ -523,6 +528,9 @@ static int mem_ap_read(struct adiv5_ap *ap, uint8_t *buffer, uint32_t size, uint
 			address += this_size;
 
 		mem_ap_update_tar_cache(ap);
+
+		if ((j++ % 32) == 0)
+			keep_alive();
 	}
 
 	if (retval == ERROR_OK)
