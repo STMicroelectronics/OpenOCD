@@ -1395,11 +1395,6 @@ static int gdb_error(struct connection *connection, int retval)
 	return ERROR_OK;
 }
 
-/* We don't have to worry about the default 2 second timeout for GDB packets,
- * because GDB breaks up large memory reads into smaller reads.
- *
- * 8191 bytes by the looks of it. Why 8191 bytes instead of 8192?????
- */
 static int gdb_read_memory_packet(struct connection *connection,
 		char const *packet, int packet_size)
 {
@@ -3089,6 +3084,42 @@ static void gdb_log_callback(void *priv, const char *file, unsigned line,
 	gdb_output_con(connection, string);
 }
 
+/*
+ * During long memory read/write, the default 2 seconds timeout of GDB can
+ * expire due to slow JTAG interface combined with high traffic on the USB bus.
+ * The usual O packets cannot be used during memory read/write.
+ * To restart the GDB timeout counter, send a custom notification packet. It
+ * would be silently dropped because is not recognized by GDB.
+ */
+static void gdb_keepalive_callback(void *priv, const char *file, unsigned line,
+		const char *function, const char *string)
+{
+	static unsigned int count = 0;
+	struct connection *connection = priv;
+	struct gdb_connection *gdb_con = connection->priv;
+	int i, len;
+	unsigned int my_checksum = 0;
+	char buf[17];
+
+	/* keep_alive() sends empty strings */
+	if (gdb_con->busy || string[0])
+		return;
+
+	len = sprintf(buf, "%%keepalive:%2.2x", count);
+	count = (count + 1) & 255;
+	for (i = 1; i < len; i++)
+		my_checksum += buf[i];
+	len += sprintf(buf + len, "#%2.2x", my_checksum & 255);
+
+#ifdef _DEBUG_GDB_IO_
+	LOG_DEBUG("sending packet '%s'", buf);
+#endif
+
+	gdb_con->busy = true;
+	gdb_write(connection, buf, len);
+	gdb_con->busy = false;
+}
+
 static void gdb_sig_halted(struct connection *connection)
 {
 	char sig_reply[4];
@@ -3172,10 +3203,14 @@ static int gdb_input_inner(struct connection *connection)
 					retval = gdb_set_register_packet(connection, packet, packet_size);
 					break;
 				case 'm':
+					log_add_callback(gdb_keepalive_callback, connection);
 					retval = gdb_read_memory_packet(connection, packet, packet_size);
+					log_remove_callback(gdb_keepalive_callback, connection);
 					break;
 				case 'M':
+					log_add_callback(gdb_keepalive_callback, connection);
 					retval = gdb_write_memory_packet(connection, packet, packet_size);
+					log_remove_callback(gdb_keepalive_callback, connection);
 					break;
 				case 'z':
 				case 'Z':
@@ -3261,9 +3296,9 @@ static int gdb_input_inner(struct connection *connection)
 					extended_protocol = 0;
 					break;
 				case 'X':
+					log_add_callback(gdb_keepalive_callback, connection);
 					retval = gdb_write_memory_binary_packet(connection, packet, packet_size);
-					if (retval != ERROR_OK)
-						return retval;
+					log_remove_callback(gdb_keepalive_callback, connection);
 					break;
 				case 'k':
 					if (extended_protocol != 0) {
