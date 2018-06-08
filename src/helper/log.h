@@ -155,6 +155,7 @@ extern int debug_level;
 /* ERROR_TIMEOUT is already taken by winerror.h. */
 #define ERROR_TIMEOUT_REACHED			(-6)
 #define ERROR_NOT_IMPLEMENTED			(-7)
+#define ERROR_OP_NOT_SUPPORTED			(-8)
 
 
 #endif /* OPENOCD_HELPER_LOG_H */
