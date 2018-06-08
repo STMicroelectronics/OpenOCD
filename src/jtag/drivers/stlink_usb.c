@@ -2563,6 +2563,32 @@ int stlink_dap_dap_write(unsigned short dap_port, unsigned short addr, uint32_t 
 	return stlink_write_dap_register(stlink_dap_handle, dap_port, addr, val);
 }
 
+int stlink_dap_ap_mem_read(uint8_t ap_num, uint8_t *buffer,
+	uint32_t size, uint32_t count, uint32_t address)
+{
+	int retval;
+
+	retval = stlink_dap_open_ap(ap_num);
+	if (retval != ERROR_OK)
+		return retval;
+
+	return stlink_usb_read_ap_mem(stlink_dap_handle, ap_num, address, size,
+		count, buffer);
+}
+
+int stlink_dap_ap_mem_write(uint8_t ap_num, const uint8_t *buffer,
+	uint32_t size, uint32_t count, uint32_t address)
+{
+	int retval;
+
+	retval = stlink_dap_open_ap(ap_num);
+	if (retval != ERROR_OK)
+		return retval;
+
+	return stlink_usb_write_ap_mem(stlink_dap_handle, ap_num, address, size,
+		count, buffer);
+}
+
 static int stlink_dap_swd_init(void)
 {
 	LOG_DEBUG("stlink_dap_swd_init()");

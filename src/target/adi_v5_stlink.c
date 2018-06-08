@@ -48,6 +48,10 @@
 
 int stlink_dap_dap_read(unsigned short dap_port, unsigned short addr, uint32_t *val);
 int stlink_dap_dap_write(unsigned short dap_port, unsigned short addr, uint32_t val);
+int stlink_dap_ap_mem_read(uint8_t ap_num, uint8_t *buffer,
+	uint32_t size, uint32_t count, uint32_t address);
+int stlink_dap_ap_mem_write(uint8_t ap_num, const uint8_t *buffer,
+	uint32_t size, uint32_t count, uint32_t address);
 
 static int stlink_check_reconnect(struct adiv5_dap *dap);
 
@@ -171,6 +175,26 @@ static int stlink_swd_run(struct adiv5_dap *dap)
 	return stlink_swd_queue_dp_read(dap, DP_RDBUFF, NULL);
 }
 
+static int stlink_ap_mem_read(struct adiv5_ap *ap, uint8_t *buffer,
+	uint32_t size, uint32_t count, uint32_t address, bool addrinc)
+{
+	if (!addrinc)
+		return ERROR_OP_NOT_SUPPORTED;
+
+	dap_invalidate_cache(ap->dap);
+	return stlink_dap_ap_mem_read(ap->ap_num, buffer, size, count, address);
+}
+
+static int stlink_ap_mem_write(struct adiv5_ap *ap, const uint8_t *buffer,
+	uint32_t size, uint32_t count, uint32_t address, bool addrinc)
+{
+	if (!addrinc)
+		return ERROR_OP_NOT_SUPPORTED;
+
+	dap_invalidate_cache(ap->dap);
+	return stlink_dap_ap_mem_write(ap->ap_num, buffer, size, count, address);
+}
+
 const struct dap_ops stlink_dap_swd_ops = {
 	.connect = stlink_connect,
 	.queue_dp_read = stlink_swd_queue_dp_read,
@@ -178,6 +202,8 @@ const struct dap_ops stlink_dap_swd_ops = {
 	.queue_ap_read = stlink_swd_queue_ap_read,
 	.queue_ap_write = stlink_swd_queue_ap_write,
 	.queue_ap_abort = stlink_swd_queue_ap_abort,
+	.ap_mem_read = stlink_ap_mem_read,
+	.ap_mem_write = stlink_ap_mem_write,
 	.run = stlink_swd_run,
 };
 
@@ -203,6 +229,8 @@ const struct dap_ops stlink_dap_jtag_ops = {
 	.queue_ap_read = stlink_swd_queue_ap_read,
 	.queue_ap_write = stlink_swd_queue_ap_write,
 	.queue_ap_abort = stlink_swd_queue_ap_abort,
+	.ap_mem_read = stlink_ap_mem_read,
+	.ap_mem_write = stlink_ap_mem_write,
 	.run = stlink_swd_run,
 };
 
