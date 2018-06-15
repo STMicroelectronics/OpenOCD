@@ -2499,7 +2499,7 @@ static struct hl_interface_param_s stlink_dap_param = {
 	.vid = {STLINK_VID,    STLINK_VID,      0},
 	.pid = {STLINK_V2_PID, STLINK_V2_1_PID, 0},
 };
-static DECLARE_BITMAP(opened_ap, DP_APSEL_MAX);
+static DECLARE_BITMAP(opened_ap, DP_APSEL_MAX + 1);
 
 static int stlink_dap_open_ap(unsigned short apsel)
 {
