@@ -2500,6 +2500,7 @@ static struct hl_interface_param_s stlink_dap_param = {
 	.pid = {STLINK_V2_PID, STLINK_V2_1_PID, 0},
 };
 static DECLARE_BITMAP(opened_ap, DP_APSEL_MAX + 1);
+static uint8_t ap_csw_size_cached[DP_APSEL_MAX + 1];
 
 static int stlink_dap_open_ap(unsigned short apsel)
 {
@@ -2563,12 +2564,79 @@ int stlink_dap_dap_write(unsigned short dap_port, unsigned short addr, uint32_t 
 	return stlink_write_dap_register(stlink_dap_handle, dap_port, addr, val);
 }
 
-int stlink_dap_ap_mem_read(uint8_t ap_num, uint8_t *buffer,
+/*
+ * Workaround for setting CSW with ST-Link pre-version V2 XXX.
+ * Before version XXX ST-Link V2 high level API does not provide a method to
+ * set CSW. Same issue on every version of ST-Link V1. This forced us using
+ * the un-efficient low-level AP register API for every memory read/write.
+ *
+ * This workaround leverage the CSW caching operated by ST-Link. At every
+ * memory R/W, ST-Link computes the new CSW value based on word size. If it
+ * match the previous CSW value than it has wrote in CSW register, ST-Link
+ * will not write in CSW register again.
+ *
+ * Here we track the word size used in the last memory R/W. If it does not
+ * match with current word size, we first force ST-Link to update CSW register
+ * and its internal cache accordingly to the new size. Then we overwrite CSW
+ * register with the value we need.
+ * The following memory R/W will operate base on the new CSW and ST-Link will
+ * not change it.
+ */
+static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size)
+{
+	uint32_t csw;
+	uint8_t dummy[4], ap_num;
+	int retval;
+
+	ap_num = ap->ap_num;
+
+	switch (size) {
+	case 8:
+		csw = CSW_8BIT;
+		break;
+	case 16:
+		csw = CSW_16BIT;
+		break;
+	case 32:
+	default:
+		/* ST-Link sets autoinc only in 32 bits mode */
+		csw = CSW_32BIT | CSW_ADDRINC_SINGLE;
+		break;
+	}
+	csw |= ap->csw_default;
+
+	if (ap_csw_size_cached[ap_num] != size) {
+		ap_csw_size_cached[ap_num] = size;
+
+		/* The mem read below will change CSW */
+		ap->csw_value = 0;
+		stlink_usb_read_ap_mem(stlink_dap_handle, ap_num, 0x00000000, size, 1, dummy);
+	}
+
+	if (ap->csw_value != csw) {
+		retval = dap_queue_ap_write(ap, MEM_AP_REG_CSW, csw);
+		if (retval != ERROR_OK)
+			return retval;
+		ap->csw_value = csw;
+	}
+	return ERROR_OK;
+}
+
+int stlink_dap_ap_mem_read(struct adiv5_ap *ap, uint8_t *buffer,
 	uint32_t size, uint32_t count, uint32_t address)
 {
 	int retval;
+	uint8_t ap_num;
 
+	ap_num = ap->ap_num;
 	retval = stlink_dap_open_ap(ap_num);
+	if (retval != ERROR_OK)
+		return retval;
+
+	/* here we do not track TAR, and next calls will change it */
+	ap->tar_valid = false;
+
+	retval = stlink_dap_set_csw(ap, size);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -2576,12 +2644,21 @@ int stlink_dap_ap_mem_read(uint8_t ap_num, uint8_t *buffer,
 		count, buffer);
 }
 
-int stlink_dap_ap_mem_write(uint8_t ap_num, const uint8_t *buffer,
+int stlink_dap_ap_mem_write(struct adiv5_ap *ap, const uint8_t *buffer,
 	uint32_t size, uint32_t count, uint32_t address)
 {
 	int retval;
+	uint8_t ap_num;
 
+	ap_num = ap->ap_num;
 	retval = stlink_dap_open_ap(ap_num);
+	if (retval != ERROR_OK)
+		return retval;
+
+	/* here we do not track TAR, and next calls will change it */
+	ap->tar_valid = false;
+
+	retval = stlink_dap_set_csw(ap, size);
 	if (retval != ERROR_OK)
 		return retval;
 
