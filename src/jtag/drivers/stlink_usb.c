@@ -2591,13 +2591,14 @@ static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size)
 	ap_num = ap->ap_num;
 
 	switch (size) {
-	case 8:
+	case 2:
+		/* current implementation only use 8 and 32 bits */
+		size = 1;
+		/* fallthrough */
+	case 1:
 		csw = CSW_8BIT;
 		break;
-	case 16:
-		csw = CSW_16BIT;
-		break;
-	case 32:
+	case 4:
 	default:
 		/* ST-Link sets autoinc only in 32 bits mode */
 		csw = CSW_32BIT | CSW_ADDRINC_SINGLE;
@@ -2633,6 +2634,12 @@ int stlink_dap_ap_mem_read(struct adiv5_ap *ap, uint8_t *buffer,
 	if (retval != ERROR_OK)
 		return retval;
 
+	if (size == 4 && address & 3) {
+		/* unaligned 32-bits read could be split in mix 32 & 8-bits. Force 8-bis only */
+		count *= 4;
+		size = 1;
+	}
+
 	/* here we do not track TAR, and next calls will change it */
 	ap->tar_valid = false;
 
@@ -2654,6 +2661,12 @@ int stlink_dap_ap_mem_write(struct adiv5_ap *ap, const uint8_t *buffer,
 	retval = stlink_dap_open_ap(ap_num);
 	if (retval != ERROR_OK)
 		return retval;
+
+	if (size == 4 && address & 3) {
+		/* unaligned 32-bits write could be split in mix 32 & 8-bits. Force 8-bis only */
+		count *= 4;
+		size = 1;
+	}
 
 	/* here we do not track TAR, and next calls will change it */
 	ap->tar_valid = false;
