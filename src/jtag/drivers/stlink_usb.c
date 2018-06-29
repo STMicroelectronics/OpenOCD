@@ -2802,10 +2802,48 @@ static int stlink_dap_quit(void)
 	if (retval != ERROR_OK)
 		return retval;
 
+	free((void *)stlink_dap_param.serial);
+	stlink_dap_param.serial = NULL;
+
 	return stlink_usb_close(stlink_dap_handle);
 }
 
+COMMAND_HANDLER(stlink_dap_serial_command)
+{
+	LOG_DEBUG("stlink_dap_serial_command");
+
+	if (CMD_ARGC != 1) {
+		LOG_ERROR("Expected exactly one argument for \"st-link serial <serial-number>\".");
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	}
+
+	if (stlink_dap_param.serial) {
+		LOG_WARNING("Command \"stlink serial\" already used. Replace previous value");
+		free((void *)stlink_dap_param.serial);
+	}
+
+	stlink_dap_param.serial = strdup(CMD_ARGV[0]);
+	return ERROR_OK;
+}
+
+static const struct command_registration stlink_dap_subcommand_handlers[] = {
+	{
+		.name = "serial",
+		.handler = &stlink_dap_serial_command,
+		.mode = COMMAND_CONFIG,
+		.help = "set the serial number of the device that should be used",
+		.usage = "<serial number>",
+	},
+	COMMAND_REGISTRATION_DONE
+};
+
 static const struct command_registration stlink_dap_command_handlers[] = {
+	{
+		.name = "st-link",
+		.mode = COMMAND_ANY,
+		.help = "perform st-link management",
+		.chain = stlink_dap_subcommand_handlers,
+	},
 	COMMAND_REGISTRATION_DONE
 };
 
