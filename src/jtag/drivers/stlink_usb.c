@@ -2843,6 +2843,7 @@ static const struct command_registration stlink_dap_command_handlers[] = {
 		.mode = COMMAND_ANY,
 		.help = "perform st-link management",
 		.chain = stlink_dap_subcommand_handlers,
+		.usage = "",
 	},
 	COMMAND_REGISTRATION_DONE
 };
