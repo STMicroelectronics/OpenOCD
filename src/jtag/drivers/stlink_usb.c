@@ -2367,7 +2367,7 @@ static int stlink_usb_init_access_point(void *handle,
 	if (h->version.stlink == 1 || h->version.jtag < 28)
 		return ERROR_OK;
 
-	LOG_DEBUG("init apnum = %d, resource %d", access_point_id, resource);
+	LOG_DEBUG_IO("init apnum = %d, resource %d", access_point_id, resource);
 	stlink_usb_init_buffer(handle, h->rx_ep, 16);
 	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
 	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV2_INIT_AP;
@@ -2390,7 +2390,7 @@ static int stlink_usb_close_access_point(void *handle,
 	if (h->version.stlink == 1 || h->version.jtag < 28)
 		return ERROR_OK;
 
-	LOG_DEBUG("close apnum = %d", access_point_id);
+	LOG_DEBUG_IO("close apnum = %d", access_point_id);
 	stlink_usb_init_buffer(handle, h->rx_ep, 16);
 	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
 	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV2_CLOSE_AP_DBG;
@@ -2422,7 +2422,7 @@ static int stlink_read_dap_register(void *handle, unsigned short dap_port,
 
 	retval = stlink_usb_xfer(handle, h->databuf, 8);
 	*val = le_to_h_u32(h->databuf + 4);
-	LOG_DEBUG("dap_port_read = %d, addr =  0x%x, value = 0x%x", dap_port, addr, *val);
+	LOG_DEBUG_IO("dap_port_read = %d, addr =  0x%x, value = 0x%x", dap_port, addr, *val);
 	return retval;
 }
 
@@ -2438,7 +2438,7 @@ static int stlink_write_dap_register(void *handle, unsigned short dap_port,
 	if (h->version.stlink == 1 || h->version.jtag < 24)
 		return ERROR_COMMAND_NOTFOUND;
 
-	LOG_DEBUG("dap_port_write = %d, addr = 0x%x, value = 0x%x", dap_port, addr, val);
+	LOG_DEBUG_IO("dap_port_write = %d, addr = 0x%x, value = 0x%x", dap_port, addr, val);
 	stlink_usb_init_buffer(handle, h->rx_ep, 16);
 	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
 	h->cmdbuf[h->cmdidx++] = STLINK_JTAG_WRITE_DAP_REG;
@@ -2767,7 +2767,7 @@ static int stlink_dap_execute_queue(void)
 {
 	struct jtag_command *cmd = jtag_command_queue;
 
-	LOG_DEBUG("stlink_dap_execute_queue()");
+	LOG_DEBUG_IO("stlink_dap_execute_queue()");
 
 	while (cmd != NULL) {
 		stlink_dap_execute_command(cmd);
