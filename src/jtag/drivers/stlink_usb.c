@@ -85,6 +85,12 @@
 #define STLINKV2_MAX_RW8        (64)
 #define STLINKV3_MAX_RW8        (512)
 
+/*
+ * ARM IHI 0031E: TAR Automatic address increment is only guaranteed to
+ * operate on the 10 least significant bits of the address
+ */
+#define TAR_AUTOINCR_BLOCK      (1 << 10)
+
 /* "WAIT" responses will be retried (with exponential backoff) at
  * most this many times before failing to caller.
  */
@@ -2856,7 +2862,7 @@ int stlink_dap_dap_write(unsigned short dap_port, unsigned short addr, uint32_t 
  * The following memory R/W will operate base on the new CSW and ST-Link will
  * not change it.
  */
-static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size)
+static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size, bool addrinc)
 {
 	uint32_t csw;
 	uint8_t dummy[4], ap_num;
@@ -2875,7 +2881,13 @@ static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size)
 	case 4:
 	default:
 		/* ST-Link sets autoinc only in 32 bits mode */
-		csw = CSW_32BIT | CSW_ADDRINC_SINGLE;
+		/*
+		 * ARM IHI 0031D: Note:
+		 * It is IMPLEMENTATION DEFINED whether a MEM-AP supports transfer sizes other than Word. If a
+		 * MEM-AP only supports word transfers and Increment single is selected, the TAR always
+		 * increments by four after a successful DRW transaction.
+		 */
+		csw = addrinc ? (CSW_32BIT | CSW_ADDRINC_SINGLE) : CSW_32BIT;
 		break;
 	}
 	csw |= ap->csw_default;
@@ -2897,11 +2909,38 @@ static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size)
 	return ERROR_OK;
 }
 
+static int stlink_dap_reset_csw(struct adiv5_ap *ap)
+{
+	uint32_t csw;
+	int retval;
+
+	csw = ap->csw_value;
+	if (csw & CSW_ADDRINC_SINGLE)
+		return ERROR_OK;
+
+	csw &= ~CSW_ADDRINC_SINGLE;
+	retval = dap_queue_ap_write(ap, MEM_AP_REG_CSW, csw);
+	if (retval != ERROR_OK)
+		return retval;
+	ap->csw_value = csw;
+	return ERROR_OK;
+}
+
 int stlink_dap_ap_mem_read(struct adiv5_ap *ap, uint8_t *buffer,
-	uint32_t size, uint32_t count, uint32_t address)
+	uint32_t size, uint32_t count, uint32_t address, bool addrinc)
 {
 	int retval;
 	uint8_t ap_num;
+	uint32_t partial;
+	int retries = 0;
+
+	if (!addrinc && size != 4)
+		return ERROR_OP_NOT_SUPPORTED;
+
+	/* new version snoop CSW and we cannot workaround NOINCR */
+	struct stlink_usb_handle_s *h = stlink_dap_handle;
+	if (!addrinc && ((h->version.stlink == 2 && h->version.jtag >= 32) || (h->version.stlink == 3 && h->version.jtag >= 2)))
+		return ERROR_OP_NOT_SUPPORTED;
 
 	ap_num = ap->ap_num;
 	retval = stlink_dap_open_ap(ap_num);
@@ -2917,19 +2956,50 @@ int stlink_dap_ap_mem_read(struct adiv5_ap *ap, uint8_t *buffer,
 	/* here we do not track TAR, and next calls will change it */
 	ap->tar_valid = false;
 
-	retval = stlink_dap_set_csw(ap, size);
+	retval = stlink_dap_set_csw(ap, size, addrinc);
 	if (retval != ERROR_OK)
 		return retval;
 
-	return stlink_usb_read_ap_mem(stlink_dap_handle, ap_num, address, size,
-		count, buffer);
+	if (addrinc)
+		return stlink_usb_read_ap_mem(stlink_dap_handle, ap_num, address, size,
+			count, buffer);
+
+	/* !addrinc && size == 4 */
+	partial = (TAR_AUTOINCR_BLOCK - (address & (TAR_AUTOINCR_BLOCK - 1))) / 4;
+	if (partial > stlink_usb_block(stlink_dap_handle) / 4)
+		partial = stlink_usb_block(stlink_dap_handle) / 4;
+	while (count) {
+		if (partial > count)
+			partial = count;
+		retval = stlink_usb_read_mem32(stlink_dap_handle, ap_num, address, 4 * partial, buffer);
+		if (retval == ERROR_WAIT && retries < MAX_WAIT_RETRIES) {
+			usleep((1<<retries++) * 1000);
+			continue;
+		}
+		if (retval != ERROR_OK)
+			return retval;
+		retries = 0;
+		count -= partial;
+		buffer += 4 * partial;
+	}
+	return stlink_dap_reset_csw(ap);
 }
 
 int stlink_dap_ap_mem_write(struct adiv5_ap *ap, const uint8_t *buffer,
-	uint32_t size, uint32_t count, uint32_t address)
+	uint32_t size, uint32_t count, uint32_t address, bool addrinc)
 {
 	int retval;
 	uint8_t ap_num;
+	uint32_t partial;
+	int retries = 0;
+
+	if (!addrinc && size != 4)
+		return ERROR_OP_NOT_SUPPORTED;
+
+	/* new version snoop CSW and we cannot workaround NOINCR */
+	struct stlink_usb_handle_s *h = stlink_dap_handle;
+	if (!addrinc && ((h->version.stlink == 2 && h->version.jtag >= 32) || (h->version.stlink == 3 && h->version.jtag >= 2)))
+		return ERROR_OP_NOT_SUPPORTED;
 
 	ap_num = ap->ap_num;
 	retval = stlink_dap_open_ap(ap_num);
@@ -2945,12 +3015,33 @@ int stlink_dap_ap_mem_write(struct adiv5_ap *ap, const uint8_t *buffer,
 	/* here we do not track TAR, and next calls will change it */
 	ap->tar_valid = false;
 
-	retval = stlink_dap_set_csw(ap, size);
+	retval = stlink_dap_set_csw(ap, size, addrinc);
 	if (retval != ERROR_OK)
 		return retval;
 
-	return stlink_usb_write_ap_mem(stlink_dap_handle, ap_num, address, size,
-		count, buffer);
+	if (addrinc)
+		return stlink_usb_write_ap_mem(stlink_dap_handle, ap_num, address, size,
+			count, buffer);
+
+	/* !addrinc && size == 4 */
+	partial = (TAR_AUTOINCR_BLOCK - (address & (TAR_AUTOINCR_BLOCK - 1))) / 4;
+	if (partial > stlink_usb_block(stlink_dap_handle) / 4)
+		partial = stlink_usb_block(stlink_dap_handle) / 4;
+	while (count) {
+		if (partial > count)
+			partial = count;
+		retval = stlink_usb_write_mem32(stlink_dap_handle, ap_num, address, 4 * partial, buffer);
+		if (retval == ERROR_WAIT && retries < MAX_WAIT_RETRIES) {
+			usleep((1<<retries++) * 1000);
+			continue;
+		}
+		if (retval != ERROR_OK)
+			return retval;
+		retries = 0;
+		count -= partial;
+		buffer += 4 * partial;
+	}
+	return stlink_dap_reset_csw(ap);
 }
 
 static int stlink_dap_swd_init(void)
