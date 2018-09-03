@@ -255,6 +255,7 @@ static const struct command_registration stlink_handlers[] = {
 		.mode = COMMAND_ANY,
 		.help = "ST-Link command group",
 		.chain = stlink_commands,
+		.usage = "",
 	},
 	COMMAND_REGISTRATION_DONE
 };
