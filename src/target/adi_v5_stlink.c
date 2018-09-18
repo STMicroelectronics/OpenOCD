@@ -205,24 +205,9 @@ const struct dap_ops stlink_dap_swd_ops = {
 	.run = stlink_swd_run,
 };
 
-static int stlink_jtag_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
-		uint32_t *data)
-{
-	int retval = stlink_check_reconnect(dap);
-	if (retval != ERROR_OK)
-		return retval;
-
-	retval = stlink_dap_dap_read(STLINK_DEBUG_PORT, reg, NULL);
-	if (retval != ERROR_OK) {
-		dap->do_reconnect = true;
-		return retval;
-	}
-	return stlink_swd_queue_dp_read(dap, DP_RDBUFF, data);
-}
-
 const struct dap_ops stlink_dap_jtag_ops = {
 	.connect = stlink_connect,
-	.queue_dp_read = stlink_jtag_queue_dp_read,
+	.queue_dp_read = stlink_swd_queue_dp_read,
 	.queue_dp_write = stlink_swd_queue_dp_write,
 	.queue_ap_read = stlink_swd_queue_ap_read,
 	.queue_ap_write = stlink_swd_queue_ap_write,

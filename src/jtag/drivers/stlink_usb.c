@@ -2653,17 +2653,11 @@ static int stlink_usb_close_access_point(void *handle,
 }
 
 /** */
-static int stlink_read_dap_register(void *handle, unsigned short dap_port,
+static int stlink_internal_read_dap_register(void *handle, unsigned short dap_port,
 			unsigned short addr, uint32_t *val)
 {
 	struct stlink_usb_handle_s *h = handle;
 	int retval;
-
-	assert(handle != NULL);
-
-	/* only supported by stlink/v2 and for firmware >= 24 */
-	if (h->version.stlink == 1 || (h->version.stlink == 2 && h->version.jtag < 24))
-		return ERROR_COMMAND_NOTFOUND;
 
 	stlink_usb_init_buffer(handle, h->rx_ep, 16);
 	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
@@ -2674,6 +2668,34 @@ static int stlink_read_dap_register(void *handle, unsigned short dap_port,
 
 	retval = stlink_usb_xfer(handle, h->databuf, 8);
 	*val = le_to_h_u32(h->databuf + 4);
+	return retval;
+}
+
+#define STLINK_DEBUG_PORT 0xffff
+static int stlink_read_dap_register(void *handle, unsigned short dap_port,
+			unsigned short addr, uint32_t *val)
+{
+	struct stlink_usb_handle_s *h = handle;
+	int retval;
+	uint32_t dummy;
+
+	assert(handle != NULL);
+
+	/* only supported by stlink/v2 and for firmware >= 24 */
+	if (h->version.stlink == 1 || (h->version.stlink == 2 && h->version.jtag < 24))
+		return ERROR_COMMAND_NOTFOUND;
+
+	if (h->transport == HL_TRANSPORT_JTAG && dap_port == STLINK_DEBUG_PORT
+		&& h->version.stlink == 2 && h->version.jtag < 32) {
+		/* workaround for V2J24 ~ V2J31 */
+		retval = stlink_internal_read_dap_register(handle, STLINK_DEBUG_PORT, addr, &dummy);
+		if (retval != ERROR_OK)
+			return retval;
+		retval = stlink_internal_read_dap_register(handle, STLINK_DEBUG_PORT, DP_RDBUFF, val);
+	} else {
+		retval = stlink_internal_read_dap_register(handle, dap_port, addr, val);
+	}
+
 	LOG_DEBUG_IO("dap_port_read = %d, addr =  0x%x, value = 0x%x", dap_port, addr, *val);
 	return retval;
 }
