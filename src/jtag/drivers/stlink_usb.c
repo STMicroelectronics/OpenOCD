@@ -1981,7 +1981,7 @@ static int stlink_usb_read_ap_mem(void *handle, uint8_t ap_num, uint32_t addr, u
 	while (count) {
 
 		bytes_remaining = (size == 4) ? \
-				stlink_max_block_size(h->max_mem_packet, addr) : STLINKV2_MAX_RW8;
+				stlink_max_block_size(h->max_mem_packet, addr) : stlink_usb_block(h);
 
 		if (count < bytes_remaining)
 			bytes_remaining = count;
@@ -2062,7 +2062,7 @@ static int stlink_usb_write_ap_mem(void *handle, uint8_t ap_num, uint32_t addr, 
 	while (count) {
 
 		bytes_remaining = (size == 4) ? \
-				stlink_max_block_size(h->max_mem_packet, addr) : STLINKV2_MAX_RW8;
+				stlink_max_block_size(h->max_mem_packet, addr) : stlink_usb_block(h);
 
 		if (count < bytes_remaining)
 			bytes_remaining = count;
