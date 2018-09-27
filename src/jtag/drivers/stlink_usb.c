@@ -305,6 +305,10 @@ struct stlink_usb_handle_s {
 #define STLINK_DEBUG_APIV2_INIT_AP         0x4B
 #define STLINK_DEBUG_APIV2_CLOSE_AP_DBG    0x4C
 
+#define STLINK_DEBUG_WRITEMEM_32BIT_NO_ADDR_INC         0x50
+
+#define STLINK_DEBUG_READMEM_32BIT_NO_ADDR_INC          0x54
+
 #define STLINK_APIV3_SET_COM_FREQ          0x61
 #define STLINK_APIV3_GET_COM_FREQ          0x62
 #define STLINK_APIV3_SWITCH_STLINK_FREQ    0x63
@@ -1965,6 +1969,74 @@ static int stlink_usb_write_mem32(void *handle, uint8_t ap_num, uint32_t addr, u
 	return stlink_usb_get_rw_status(handle);
 }
 
+/** */
+static int stlink_usb_read_mem32_noaddrinc(void *handle, uint8_t ap_num, uint32_t addr, uint16_t len,
+			  uint8_t *buffer)
+{
+	int res;
+	struct stlink_usb_handle_s *h = handle;
+
+	assert(handle != NULL);
+
+	/* data must be a multiple of 4 and word aligned */
+	if (len % 4 || addr % 4) {
+		LOG_DEBUG("Invalid data alignment");
+		return ERROR_TARGET_UNALIGNED_ACCESS;
+	}
+
+	stlink_usb_init_buffer(handle, h->rx_ep, len);
+
+	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
+	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_READMEM_32BIT_NO_ADDR_INC;
+	h_u32_to_le(h->cmdbuf+h->cmdidx, addr);
+	h->cmdidx += 4;
+	h_u16_to_le(h->cmdbuf+h->cmdidx, len);
+	h->cmdidx += 2;
+	h->cmdbuf[h->cmdidx++] = ap_num;
+
+	res = stlink_usb_xfer(handle, h->databuf, len);
+
+	if (res != ERROR_OK)
+		return res;
+
+	memcpy(buffer, h->databuf, len);
+
+	return stlink_usb_get_rw_status(handle);
+}
+
+/** */
+static int stlink_usb_write_mem32_noaddrinc(void *handle, uint8_t ap_num, uint32_t addr, uint16_t len,
+			   const uint8_t *buffer)
+{
+	int res;
+	struct stlink_usb_handle_s *h = handle;
+
+	assert(handle != NULL);
+
+	/* data must be a multiple of 4 and word aligned */
+	if (len % 4 || addr % 4) {
+		LOG_DEBUG("Invalid data alignment");
+		return ERROR_TARGET_UNALIGNED_ACCESS;
+	}
+
+	stlink_usb_init_buffer(handle, h->tx_ep, len);
+
+	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
+	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_WRITEMEM_32BIT_NO_ADDR_INC;
+	h_u32_to_le(h->cmdbuf+h->cmdidx, addr);
+	h->cmdidx += 4;
+	h_u16_to_le(h->cmdbuf+h->cmdidx, len);
+	h->cmdidx += 2;
+	h->cmdbuf[h->cmdidx++] = ap_num;
+
+	res = stlink_usb_xfer(handle, buffer, len);
+
+	if (res != ERROR_OK)
+		return res;
+
+	return stlink_usb_get_rw_status(handle);
+}
+
 static uint32_t stlink_max_block_size(uint32_t tar_autoincr_block, uint32_t address)
 {
 	uint32_t max_tar_block = (tar_autoincr_block - ((tar_autoincr_block - 1) & address));
@@ -2870,6 +2942,20 @@ static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size, bool addrinc)
 
 	ap_num = ap->ap_num;
 
+	struct stlink_usb_handle_s *h = stlink_dap_handle;
+	if ((h->version.stlink == 2 && h->version.jtag >= 32) || (h->version.stlink == 3 && h->version.jtag >= 2)) {
+		csw = ap->csw_default;
+		if (csw != (ap->csw_value & ~(CSW_SIZE_MASK | CSW_ADDRINC_MASK))) {
+			retval = dap_queue_ap_write(ap, MEM_AP_REG_CSW, csw);
+			if (retval != ERROR_OK) {
+				ap->csw_value = 0;
+				return retval;
+			}
+			ap->csw_value = csw;
+		}
+		return ERROR_OK;
+	}
+
 	switch (size) {
 	case 2:
 		/* current implementation only use 8 and 32 bits */
@@ -2902,8 +2988,10 @@ static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size, bool addrinc)
 
 	if (ap->csw_value != csw) {
 		retval = dap_queue_ap_write(ap, MEM_AP_REG_CSW, csw);
-		if (retval != ERROR_OK)
+		if (retval != ERROR_OK) {
+			ap->csw_value = 0;
 			return retval;
+		}
 		ap->csw_value = csw;
 	}
 	return ERROR_OK;
@@ -2933,13 +3021,13 @@ int stlink_dap_ap_mem_read(struct adiv5_ap *ap, uint8_t *buffer,
 	uint8_t ap_num;
 	uint32_t partial;
 	int retries = 0;
+	uint32_t bytes_remaining;
 
 	if (!addrinc && size != 4)
 		return ERROR_OP_NOT_SUPPORTED;
 
-	/* new version snoop CSW and we cannot workaround NOINCR */
 	struct stlink_usb_handle_s *h = stlink_dap_handle;
-	if (!addrinc && ((h->version.stlink == 2 && h->version.jtag >= 32) || (h->version.stlink == 3 && h->version.jtag >= 2)))
+	if (!addrinc && (h->version.stlink == 1 || (h->version.stlink == 2 && h->version.jtag < 24)))
 		return ERROR_OP_NOT_SUPPORTED;
 
 	ap_num = ap->ap_num;
@@ -2965,6 +3053,31 @@ int stlink_dap_ap_mem_read(struct adiv5_ap *ap, uint8_t *buffer,
 			count, buffer);
 
 	/* !addrinc && size == 4 */
+
+	if ((h->version.stlink == 2 && h->version.jtag >= 32) || (h->version.stlink == 3 && h->version.jtag >= 2)) {
+		count *= 4;
+		while (count) {
+			bytes_remaining = stlink_usb_block(h);
+
+			if (count < bytes_remaining)
+				bytes_remaining = count;
+
+			retval = stlink_usb_read_mem32_noaddrinc(stlink_dap_handle, ap_num, address, bytes_remaining, buffer);
+			if (retval == ERROR_WAIT && retries < MAX_WAIT_RETRIES) {
+				usleep((1<<retries++) * 1000);
+				continue;
+			}
+			if (retval != ERROR_OK)
+				return retval;
+
+			retries = 0;
+			buffer += bytes_remaining;
+			count -= bytes_remaining;
+		}
+		return ERROR_OK;
+	}
+
+	/* workaround for V2J24..V2J31 and V3J1 */
 	partial = (TAR_AUTOINCR_BLOCK - (address & (TAR_AUTOINCR_BLOCK - 1))) / 4;
 	if (partial > stlink_usb_block(stlink_dap_handle) / 4)
 		partial = stlink_usb_block(stlink_dap_handle) / 4;
@@ -2992,13 +3105,13 @@ int stlink_dap_ap_mem_write(struct adiv5_ap *ap, const uint8_t *buffer,
 	uint8_t ap_num;
 	uint32_t partial;
 	int retries = 0;
+	uint32_t bytes_remaining;
 
 	if (!addrinc && size != 4)
 		return ERROR_OP_NOT_SUPPORTED;
 
-	/* new version snoop CSW and we cannot workaround NOINCR */
 	struct stlink_usb_handle_s *h = stlink_dap_handle;
-	if (!addrinc && ((h->version.stlink == 2 && h->version.jtag >= 32) || (h->version.stlink == 3 && h->version.jtag >= 2)))
+	if (!addrinc && (h->version.stlink == 1 || (h->version.stlink == 2 && h->version.jtag < 24)))
 		return ERROR_OP_NOT_SUPPORTED;
 
 	ap_num = ap->ap_num;
@@ -3024,6 +3137,31 @@ int stlink_dap_ap_mem_write(struct adiv5_ap *ap, const uint8_t *buffer,
 			count, buffer);
 
 	/* !addrinc && size == 4 */
+
+	if ((h->version.stlink == 2 && h->version.jtag >= 32) || (h->version.stlink == 3 && h->version.jtag >= 2)) {
+		count *= 4;
+		while (count) {
+			bytes_remaining = stlink_usb_block(h);
+
+			if (count < bytes_remaining)
+				bytes_remaining = count;
+
+			retval = stlink_usb_write_mem32_noaddrinc(stlink_dap_handle, ap_num, address, bytes_remaining, buffer);
+			if (retval == ERROR_WAIT && retries < MAX_WAIT_RETRIES) {
+				usleep((1<<retries++) * 1000);
+				continue;
+			}
+			if (retval != ERROR_OK)
+				return retval;
+
+			retries = 0;
+			buffer += bytes_remaining;
+			count -= bytes_remaining;
+		}
+		return ERROR_OK;
+	}
+
+	/* workaround for V2J24..V2J31 and V3J1 */
 	partial = (TAR_AUTOINCR_BLOCK - (address & (TAR_AUTOINCR_BLOCK - 1))) / 4;
 	if (partial > stlink_usb_block(stlink_dap_handle) / 4)
 		partial = stlink_usb_block(stlink_dap_handle) / 4;
