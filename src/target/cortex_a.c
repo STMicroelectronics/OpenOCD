@@ -2850,42 +2850,24 @@ static int cortex_a_read_memory_ahb(struct target *target, target_addr_t address
 			return retval;
 	}
 
-	if (!count || !buffer)
-		return ERROR_COMMAND_SYNTAX_ERROR;
-
-	if (!mmu_enabled)
-		return mem_ap_read_buf(armv7a->memory_ap, buffer, size, count, address);
-
-	/*
-	 * TODO: here we are pessimistic and we use the smaller page of 4kB, but
-	 * cortex_a_virt2phys() does a full table walk, so can return the actual
-	 * size of page (4kB or 64kB) or section (1MB or 16Mb).
-	 */
-	while (count) {
-		target_addr_t page_size = 0x1000;
-		uint32_t current_count;
-
+	if (mmu_enabled) {
 		virt = address;
 		retval = cortex_a_virt2phys(target, virt, &phys);
 		if (retval != ERROR_OK)
 			return retval;
 
-		current_count = (page_size - (address & (page_size - 1))) / size;
-		if (current_count > count)
-			current_count = count;
-
-		LOG_DEBUG("Reading at virtual address 0x%" PRIx32 " bytes. "
+		LOG_DEBUG("Reading at virtual address. "
 			  "Translating v:" TARGET_ADDR_FMT " to r:" TARGET_ADDR_FMT,
-			  size * current_count, virt, phys);
-
-		retval = mem_ap_read_buf(armv7a->memory_ap, buffer, size, current_count, phys);
-		if (retval != ERROR_OK)
-			return retval;
-		count -= current_count;
-		address += size * current_count;
-		buffer += size * current_count;
+			  virt, phys);
+		address = phys;
 	}
-	return ERROR_OK;
+
+	if (!count || !buffer)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	retval = mem_ap_read_buf(armv7a->memory_ap, buffer, size, count, address);
+
+	return retval;
 }
 
 static int cortex_a_write_phys_memory(struct target *target,
@@ -2962,42 +2944,25 @@ static int cortex_a_write_memory_ahb(struct target *target, target_addr_t addres
 			return retval;
 	}
 
-	if (!count || !buffer)
-		return ERROR_COMMAND_SYNTAX_ERROR;
-
-	if (!mmu_enabled)
-		return mem_ap_write_buf(armv7a->memory_ap, buffer, size, count, address);
-
-	/*
-	 * TODO: here we are pessimistic and we use the smaller page of 4kB, but
-	 * cortex_a_virt2phys() does a full table walk, so can return the actual
-	 * size of page (4kB or 64kB) or section (1MB or 16Mb).
-	 */
-	while (count) {
-		target_addr_t page_size = 0x1000;
-		uint32_t current_count;
-
+	if (mmu_enabled) {
 		virt = address;
 		retval = cortex_a_virt2phys(target, virt, &phys);
 		if (retval != ERROR_OK)
 			return retval;
 
-		current_count = (page_size - (address & (page_size - 1))) / size;
-		if (current_count > count)
-			current_count = count;
-
-		LOG_DEBUG("Writing to virtual address 0x%" PRIx32 " bytes. "
+		LOG_DEBUG("Writing to virtual address. "
 			  "Translating v:" TARGET_ADDR_FMT " to r:" TARGET_ADDR_FMT,
-			  size * current_count, virt, phys);
-
-		retval = mem_ap_write_buf(armv7a->memory_ap, buffer, size, current_count, phys);
-		if (retval != ERROR_OK)
-			return retval;
-		count -= current_count;
-		address += size * current_count;
-		buffer += size * current_count;
+			  virt,
+			  phys);
+		address = phys;
 	}
-	return ERROR_OK;
+
+	if (!count || !buffer)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	retval = mem_ap_write_buf(armv7a->memory_ap, buffer, size, count, address);
+
+	return retval;
 }
 
 static int cortex_a_read_buffer(struct target *target, target_addr_t address,
