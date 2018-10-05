@@ -2839,10 +2839,6 @@ static int cortex_a_read_memory_ahb(struct target *target, target_addr_t address
 	LOG_DEBUG("Reading memory at address " TARGET_ADDR_FMT "; size %" PRId32 "; count %" PRId32,
 		address, size, count);
 
-	/* flush the data cache */
-	if (armv7a->armv7a_mmu.armv7a_cache.auto_cache_enabled)
-		armv7a_l1_d_cache_clean_virt(target, address, size * count);
-
 	/* determine if MMU was enabled on target stop */
 	if (!armv7a->is_armv7r) {
 		retval = cortex_a_mmu(target, &mmu_enabled);
@@ -2930,12 +2926,6 @@ static int cortex_a_write_memory_ahb(struct target *target, target_addr_t addres
 	/* cortex_a handles unaligned memory access */
 	LOG_DEBUG("Writing memory at address " TARGET_ADDR_FMT "; size %" PRId32 "; count %" PRId32,
 		address, size, count);
-
-	/* flush and invalidate the data cache */
-	if (armv7a->armv7a_mmu.armv7a_cache.auto_cache_enabled)
-		armv7a_cache_flush_virt(target, address, size * count);
-	/* invalidate instruction cache */
-	armv7a_l1_i_cache_inval_virt(target, address, size * count);
 
 	/* determine if MMU was enabled on target stop */
 	if (!armv7a->is_armv7r) {
