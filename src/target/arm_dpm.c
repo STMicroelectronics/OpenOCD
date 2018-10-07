@@ -168,7 +168,7 @@ static int dpm_read_reg_u64(struct arm_dpm *dpm, struct reg *r, unsigned regnum)
 }
 
 /* just read the register -- rely on the core mode being right */
-static int dpm_read_reg(struct arm_dpm *dpm, struct reg *r, unsigned regnum)
+int dpm_read_reg(struct arm_dpm *dpm, struct reg *r, unsigned regnum)
 {
 	uint32_t value;
 	int retval;
