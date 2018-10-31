@@ -253,10 +253,10 @@ proc ocd_process_reset_inner { MODE } {
 
 	# Deassert SRST
 	reset_deassert_initial $MODE
-	if { !$early_reset_init } {
-		if [using_jtag] { jtag arp_init }
-		dap init
-	}
+	if [using_stlink_jtag] { st-link arp_init }
+	if [using_stlink_swd] { st-link arp_init }
+	if [using_jtag] { jtag arp_init }
+	dap init
 
 	foreach t $targets {
 		$t invoke-event reset-deassert-post

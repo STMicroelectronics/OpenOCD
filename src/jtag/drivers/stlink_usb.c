@@ -3329,6 +3329,24 @@ COMMAND_HANDLER(stlink_dap_serial_command)
 	return ERROR_OK;
 }
 
+COMMAND_HANDLER(stlink_dap_arp_init)
+{
+	if (stlink_dap_param.transport == HL_TRANSPORT_JTAG ||
+		(stlink_dap_param.transport == HL_TRANSPORT_SWD && stlink_dap_handle->version.stlink == 3)) {
+		//stlink_usb_reset(stlink_dap_handle);
+		/* exit jtag closes all the opened AP */
+		for (int apsel = 0; apsel <= DP_APSEL_MAX; apsel++)
+			clear_bit(apsel, opened_ap);
+		stlink_usb_mode_leave(stlink_dap_handle, STLINK_MODE_DEBUG_JTAG);
+		stlink_usb_mode_enter(stlink_dap_handle, stlink_get_mode(stlink_dap_param.transport));
+		/* equivalent to
+			jtag_add_tlr();
+			jtag_execute_queue();
+		but let's stay away from jtag code */
+	}
+	return ERROR_OK;
+}
+
 static const struct command_registration stlink_dap_subcommand_handlers[] = {
 	{
 		.name = "serial",
@@ -3336,6 +3354,12 @@ static const struct command_registration stlink_dap_subcommand_handlers[] = {
 		.mode = COMMAND_CONFIG,
 		.help = "set the serial number of the device that should be used",
 		.usage = "<serial number>",
+	},
+	{
+		.name = "arp_init",
+		.handler = &stlink_dap_arp_init,
+		.mode = COMMAND_ANY,
+		.help = "",
 	},
 	COMMAND_REGISTRATION_DONE
 };
