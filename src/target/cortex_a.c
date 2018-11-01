@@ -3260,6 +3260,7 @@ struct target_type cortexa_target = {
 	.deassert_reset = cortex_a_post_deassert_reset,
 
 	/* REVISIT allow exporting VFP3 registers ... */
+	.get_gdb_arch = arm_get_gdb_arch,
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
 
 	.read_memory = cortex_a_read_memory,
@@ -3340,6 +3341,7 @@ struct target_type cortexr4_target = {
 	.deassert_reset = cortex_a_post_deassert_reset,
 
 	/* REVISIT allow exporting VFP3 registers ... */
+	.get_gdb_arch = arm_get_gdb_arch,
 	.get_gdb_reg_list = arm_get_gdb_reg_list,
 
 	.read_memory = cortex_a_read_phys_memory,
