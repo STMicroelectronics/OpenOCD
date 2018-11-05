@@ -2746,21 +2746,7 @@ static int cortex_a_examine_first(struct target *target)
 
 	int i;
 	int retval = ERROR_OK;
-	uint32_t didr, cpuid, dbg_osreg, dp_ctrl_stat;
-
-	/*
-	 * Some device turn off CSYSPWRUPACK or CDBGPWRUPACK at reset.
-	 * Check them and eventually re init the DP.
-	 */
-	retval = dap_queue_dp_read(swjdp, DP_CTRL_STAT, &dp_ctrl_stat);
-	if (retval != ERROR_OK
-		|| ((dp_ctrl_stat & CDBGPWRUPACK) == 0)
-		|| (!swjdp->ignore_syspwrupack && ((dp_ctrl_stat & CSYSPWRUPACK) == 0))) {
-		LOG_INFO("DP disabled after reset. Re-initialize it!");
-		retval = dap_dp_init(swjdp);
-		if (retval != ERROR_OK)
-			LOG_ERROR("DP initialization failed");
-	}
+	uint32_t didr, cpuid, dbg_osreg;
 
 	/* Search for the APB-AP - it is needed for access to debug registers */
 	retval = dap_find_ap(swjdp, AP_TYPE_APB_AP, &armv7a->debug_ap);
