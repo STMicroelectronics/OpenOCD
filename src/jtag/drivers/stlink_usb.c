@@ -524,6 +524,7 @@ static int stlink_usb_xfer(void *handle, const uint8_t *buf, int size)
 	return ERROR_OK;
 }
 
+COMMAND_HANDLER(stlink_dap_arp_init);
 /**
     Converts an STLINK status code held in the first byte of a response
     to an openocd error, logs any error/wait status as debug output.
@@ -628,7 +629,8 @@ static int stlink_usb_error_check(void *handle)
 			LOG_DEBUG("STLINK_SWD_AP_STICKY_ERROR");
 			/* Seen when reading address out of range (0xFFFFFFFF) */
 			/* Seems usb_reset helps the following r/w accesses */
-			stlink_usb_reset(h);
+			// stlink_usb_reset(h);
+			stlink_dap_arp_init(NULL);
 			return ERROR_FAIL;
 		case STLINK_SWD_AP_STICKYORUN_ERROR:
 			LOG_DEBUG("STLINK_SWD_AP_STICKYORUN_ERROR");
@@ -3334,11 +3336,14 @@ COMMAND_HANDLER(stlink_dap_arp_init)
 	if (stlink_dap_param.transport == HL_TRANSPORT_JTAG ||
 		(stlink_dap_param.transport == HL_TRANSPORT_SWD && stlink_dap_handle->version.stlink == 3)) {
 		//stlink_usb_reset(stlink_dap_handle);
-		/* exit jtag closes all the opened AP */
-		for (int apsel = 0; apsel <= DP_APSEL_MAX; apsel++)
-			clear_bit(apsel, opened_ap);
 		stlink_usb_mode_leave(stlink_dap_handle, STLINK_MODE_DEBUG_JTAG);
 		stlink_usb_mode_enter(stlink_dap_handle, stlink_get_mode(stlink_dap_param.transport));
+		/* exit jtag closes all the opened AP; reopen them! */
+		for (int apsel = 0; apsel <= DP_APSEL_MAX; apsel++)
+			if (test_bit(apsel, opened_ap)) {
+				clear_bit(apsel, opened_ap);
+				stlink_dap_open_ap(apsel);
+			}
 		/* equivalent to
 			jtag_add_tlr();
 			jtag_execute_queue();
