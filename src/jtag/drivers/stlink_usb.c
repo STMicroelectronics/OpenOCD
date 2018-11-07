@@ -3375,7 +3375,9 @@ static const struct command_registration stlink_dap_subcommand_handlers[] = {
 		.name = "arp_init",
 		.handler = &stlink_dap_arp_init,
 		.mode = COMMAND_ANY,
-		.help = "",
+		.help = "Validates JTAG scan chain against the list of "
+				"declared TAPs.",
+		.usage = "",
 	},
 	COMMAND_REGISTRATION_DONE
 };
