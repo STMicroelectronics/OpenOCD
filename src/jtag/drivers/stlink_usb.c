@@ -760,6 +760,9 @@ static int stlink_usb_version(void *handle)
 	int res;
 	uint16_t v;
 	uint8_t m_version = 0;
+	uint8_t bridge = 0;
+	char v_str[5 * (1 + 3) + 1]; /* VvJjMmBbSs */
+	char *p;
 	struct stlink_usb_handle_s *h = handle;
 
 	assert(handle != NULL);
@@ -777,6 +780,7 @@ static int stlink_usb_version(void *handle)
 		h->version.swim = h->databuf[1];
 		h->version.jtag = h->databuf[2];
 		m_version = h->databuf[3];
+		bridge = h->databuf[4];
 
 		h->vid = (h->databuf[9] << 8) | h->databuf[8];
 		h->pid = (h->databuf[11] << 8) | h->databuf[10];
@@ -808,13 +812,20 @@ static int stlink_usb_version(void *handle)
 			h->version.jtag_api_max = STLINK_JTAG_API_V1;
 	}
 
-	LOG_INFO("STLINK v%d%s JTAG v%d API v%d %s%d VID 0x%04X PID 0x%04X",
-		h->version.stlink,
-		(h->pid == STLINK_V2_1_PID) ? ".1" : "",
-		h->version.jtag,
+	p = v_str;
+	p += sprintf(p, "V%d", h->version.stlink);
+	if (h->version.jtag || !m_version)
+		p += sprintf(p, "J%d", h->version.jtag);
+	if (m_version)
+		p += sprintf(p, "M%d", m_version);
+	if (bridge)
+		p += sprintf(p, "B%d", bridge);
+	if (h->version.swim || !m_version)
+		p += sprintf(p, "S%d", h->version.swim);
+
+	LOG_INFO("STLINK %s (API v%d) VID:PID %04X:%04X",
+		v_str,
 		h->version.jtag_api_max,
-		(h->pid == STLINK_V2_1_PID || (h->version.stlink == 3 && h->version.swim == 0)) ? "M" : "SWIM v",
-		(h->version.stlink == 3 && h->version.swim == 0) ? m_version : h->version.swim,
 		h->vid,
 		h->pid);
 
