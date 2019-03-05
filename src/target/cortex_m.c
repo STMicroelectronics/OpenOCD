@@ -371,6 +371,14 @@ static int cortex_m_examine_exception_reason(struct target *target)
 			if (retval != ERROR_OK)
 				return retval;
 			break;
+		case 7:	/* Secure Fault */
+			retval = mem_ap_read_u32(armv7m->debug_ap, NVIC_SFSR, &except_sr);
+			if (retval != ERROR_OK)
+				return retval;
+			retval = mem_ap_read_u32(armv7m->debug_ap, NVIC_SFAR, &except_ar);
+			if (retval != ERROR_OK)
+				return retval;
+			break;
 		case 11:	/* SVCall */
 			break;
 		case 12:	/* Debug Monitor */
@@ -399,6 +407,7 @@ static int cortex_m_debug_entry(struct target *target)
 {
 	int i;
 	uint32_t xPSR;
+	uint32_t dscsr;
 	int retval;
 	struct cortex_m_common *cortex_m = target_to_cm(target);
 	struct armv7m_common *armv7m = &cortex_m->armv7m;
@@ -413,6 +422,11 @@ static int cortex_m_debug_entry(struct target *target)
 		return retval;
 
 	retval = armv7m->examine_debug_reason(target);
+	if (retval != ERROR_OK)
+		return retval;
+
+	/* read cpu state */
+	retval = mem_ap_read_u32(armv7m->debug_ap, DSCSR, &dscsr);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -462,9 +476,10 @@ static int cortex_m_debug_entry(struct target *target)
 	if (armv7m->exception_number)
 		cortex_m_examine_exception_reason(target);
 
-	LOG_DEBUG("entered debug state in core mode: %s at PC 0x%" PRIx32 ", target->state: %s",
+	LOG_DEBUG("entered debug state in core mode: %s at PC 0x%" PRIx32 ", cpu %s, target->state: %s",
 		arm_mode_name(arm->core_mode),
 		buf_get_u32(arm->pc->value, 0, 32),
+		((dscsr & DSCSR_CDS) >> 16) ? "in Secure state" : "in Non-Secure state",
 		target_state_name(target));
 
 	if (armv7m->post_debug_entry) {
@@ -1152,7 +1167,7 @@ int cortex_m_set_breakpoint(struct target *target, struct breakpoint *breakpoint
 			LOG_ERROR("Unhandled Cortex-M Flash Patch Breakpoint architecture revision");
 			return ERROR_FAIL;
 		}
-		comparator_list[fp_num].used = 1;
+		comparator_list[fp_num].used = true;
 		comparator_list[fp_num].fpcr_value = fpcr_value;
 		target_write_u32(target, comparator_list[fp_num].fpcr_address,
 			comparator_list[fp_num].fpcr_value);
@@ -1226,7 +1241,7 @@ int cortex_m_unset_breakpoint(struct target *target, struct breakpoint *breakpoi
 			LOG_DEBUG("Invalid FP Comparator number in breakpoint");
 			return ERROR_OK;
 		}
-		comparator_list[fp_num].used = 0;
+		comparator_list[fp_num].used = false;
 		comparator_list[fp_num].fpcr_value = 0;
 		target_write_u32(target, comparator_list[fp_num].fpcr_address,
 			comparator_list[fp_num].fpcr_value);
@@ -1296,17 +1311,7 @@ int cortex_m_remove_breakpoint(struct target *target, struct breakpoint *breakpo
 int cortex_m_set_watchpoint(struct target *target, struct watchpoint *watchpoint)
 {
 	int dwt_num = 0;
-	uint32_t mask, temp;
 	struct cortex_m_common *cortex_m = target_to_cm(target);
-
-	/* watchpoint params were validated earlier */
-	mask = 0;
-	temp = watchpoint->length;
-	while (temp) {
-		temp >>= 1;
-		mask++;
-	}
-	mask--;
 
 	/* REVISIT Don't fully trust these "not used" records ... users
 	 * may set up breakpoints by hand, e.g. dual-address data value
@@ -1323,18 +1328,29 @@ int cortex_m_set_watchpoint(struct target *target, struct watchpoint *watchpoint
 		LOG_ERROR("Can not find free DWT Comparator");
 		return ERROR_FAIL;
 	}
-	comparator->used = 1;
+	comparator->used = true;
 	watchpoint->set = dwt_num + 1;
 
 	comparator->comp = watchpoint->address;
 	target_write_u32(target, comparator->dwt_comparator_address + 0,
 		comparator->comp);
 
-	comparator->mask = mask;
-	target_write_u32(target, comparator->dwt_comparator_address + 4,
-		comparator->mask);
+	if ((cortex_m->dwt_devarch & 0x1FFFFF) != DWT_DEVARCH_ARMV8M) {
+		uint32_t mask = 0, temp;
 
-	switch (watchpoint->rw) {
+		/* watchpoint params were validated earlier */
+		temp = watchpoint->length;
+		while (temp) {
+			temp >>= 1;
+			mask++;
+		}
+		mask--;
+
+		comparator->mask = mask;
+		target_write_u32(target, comparator->dwt_comparator_address + 4,
+			comparator->mask);
+
+		switch (watchpoint->rw) {
 		case WPT_READ:
 			comparator->function = 5;
 			break;
@@ -1344,7 +1360,27 @@ int cortex_m_set_watchpoint(struct target *target, struct watchpoint *watchpoint
 		case WPT_ACCESS:
 			comparator->function = 7;
 			break;
+		}
+	} else {
+		uint32_t data_size = watchpoint->length >> 1;
+		comparator->mask = (watchpoint->length >> 1) | 1;
+
+		switch (watchpoint->rw) {
+		case WPT_ACCESS:
+			comparator->function = 4;
+			break;
+		case WPT_WRITE:
+			comparator->function = 5;
+			break;
+		case WPT_READ:
+			comparator->function = 6;
+			break;
+		}
+		/* add ACTION (1 << 4) (generate debug event) and DATAVSIZE */
+		comparator->function = comparator->function | (1 << 4) |
+				(data_size << 10);
 	}
+
 	target_write_u32(target, comparator->dwt_comparator_address + 8,
 		comparator->function);
 
@@ -1380,7 +1416,7 @@ int cortex_m_unset_watchpoint(struct target *target, struct watchpoint *watchpoi
 	}
 
 	comparator = cortex_m->dwt_comparator_list + dwt_num;
-	comparator->used = 0;
+	comparator->used = false;
 	comparator->function = 0;
 	target_write_u32(target, comparator->dwt_comparator_address + 8,
 		comparator->function);
@@ -1522,7 +1558,9 @@ static int cortex_m_load_core_reg_u32(struct target *target,
 			 * in one Debug Core register.  So say r0 and r2 docs;
 			 * it was removed from r1 docs, but still works.
 			 */
-			cortexm_dap_read_coreregister_u32(target, value, 20);
+			retval = cortexm_dap_read_coreregister_u32(target, value, 20);
+			if (retval != ERROR_OK)
+				return retval;
 
 			switch (num) {
 				case ARMV7M_PRIMASK:
@@ -1541,7 +1579,118 @@ static int cortex_m_load_core_reg_u32(struct target *target,
 					*value = buf_get_u32((uint8_t *)value, 24, 2);
 					break;
 			}
+			LOG_DEBUG("load from special reg %i value 0x%" PRIx32 "", (int)num, *value);
+			break;
 
+		case ARMV8M_MSP_NS:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x18);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("load from MSP_NS value 0x%" PRIx32 "", *value);
+			break;
+
+		case ARMV8M_PSP_NS:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x19);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("load from PSP_NS value 0x%" PRIx32 "", *value);
+			break;
+
+		case ARMV8M_MSP_S:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x1A);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("load from MSP_S value 0x%" PRIx32 "", *value);
+			break;
+
+		case ARMV8M_PSP_S:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x1B);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("load from PSP_S value 0x%" PRIx32 "", *value);
+			break;
+
+		case ARMV8M_MSPLIM_S:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x1C);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("load from MSPLIM_S value 0x%" PRIx32 "", *value);
+			break;
+
+		case ARMV8M_PSPLIM_S:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x1D);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("load from PSPLIM_S value 0x%" PRIx32 "", *value);
+			break;
+
+		case ARMV8M_MSPLIM_NS:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x1E);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("load from MSPLIM_NS value 0x%" PRIx32 "", *value);
+			break;
+
+		case ARMV8M_PSPLIM_NS:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x1F);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("load from PSPLIM_NS value 0x%" PRIx32 "", *value);
+			break;
+
+		case ARMV8M_PRIMASK_S:
+		case ARMV8M_BASEPRI_S:
+		case ARMV8M_FAULTMASK_S:
+		case ARMV8M_CONTROL_S:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x22);
+			if (retval != ERROR_OK)
+				return retval;
+
+			switch (num) {
+				case ARMV8M_PRIMASK_S:
+					*value = buf_get_u32((uint8_t *)value, 0, 1);
+					break;
+
+				case ARMV8M_BASEPRI_S:
+					*value = buf_get_u32((uint8_t *)value, 8, 8);
+					break;
+
+				case ARMV8M_FAULTMASK_S:
+					*value = buf_get_u32((uint8_t *)value, 16, 1);
+					break;
+
+				case ARMV8M_CONTROL_S:
+					*value = buf_get_u32((uint8_t *)value, 24, 2);
+					break;
+			}
+			LOG_DEBUG("load from special reg %i value 0x%" PRIx32 "", (int)num, *value);
+			break;
+
+		case ARMV8M_PRIMASK_NS:
+		case ARMV8M_BASEPRI_NS:
+		case ARMV8M_FAULTMASK_NS:
+		case ARMV8M_CONTROL_NS:
+			retval = cortexm_dap_read_coreregister_u32(target, value, 0x23);
+			if (retval != ERROR_OK)
+				return retval;
+
+			switch (num) {
+				case ARMV8M_PRIMASK_NS:
+					*value = buf_get_u32((uint8_t *)value, 0, 1);
+					break;
+
+				case ARMV8M_BASEPRI_NS:
+					*value = buf_get_u32((uint8_t *)value, 8, 8);
+					break;
+
+				case ARMV8M_FAULTMASK_NS:
+					*value = buf_get_u32((uint8_t *)value, 16, 1);
+					break;
+
+				case ARMV8M_CONTROL_NS:
+					*value = buf_get_u32((uint8_t *)value, 24, 2);
+					break;
+			}
 			LOG_DEBUG("load from special reg %i value 0x%" PRIx32 "", (int)num, *value);
 			break;
 
@@ -1608,7 +1757,9 @@ static int cortex_m_store_core_reg_u32(struct target *target,
 			 * in one Debug Core register.  So say r0 and r2 docs;
 			 * it was removed from r1 docs, but still works.
 			 */
-			cortexm_dap_read_coreregister_u32(target, &reg, 20);
+			retval = cortexm_dap_read_coreregister_u32(target, &reg, 20);
+			if (retval != ERROR_OK)
+				return retval;
 
 			switch (num) {
 				case ARMV7M_PRIMASK:
@@ -1628,8 +1779,127 @@ static int cortex_m_store_core_reg_u32(struct target *target,
 					break;
 			}
 
-			cortexm_dap_write_coreregister_u32(target, reg, 20);
+			retval = cortexm_dap_write_coreregister_u32(target, reg, 20);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write special reg %i value 0x%" PRIx32 " ", (int)num, value);
+			break;
 
+		case ARMV8M_MSP_NS:
+			retval = cortexm_dap_write_coreregister_u32(target, value, 0x18);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write MSP_NS value 0x%" PRIx32 "", value);
+			break;
+
+		case ARMV8M_PSP_NS:
+			retval = cortexm_dap_write_coreregister_u32(target, value, 0x19);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write PSP_NS value 0x%" PRIx32 "", value);
+			break;
+
+		case ARMV8M_MSP_S:
+			retval = cortexm_dap_write_coreregister_u32(target, value, 0x1A);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write MSP_S value 0x%" PRIx32 "", value);
+			break;
+
+		case ARMV8M_PSP_S:
+			retval = cortexm_dap_write_coreregister_u32(target, value, 0x1B);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write PSP_S value 0x%" PRIx32 "", value);
+			break;
+
+		case ARMV8M_MSPLIM_S:
+			retval = cortexm_dap_write_coreregister_u32(target, value, 0x1C);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write MSPLIM_S value 0x%" PRIx32 "", value);
+			break;
+
+		case ARMV8M_PSPLIM_S:
+			retval = cortexm_dap_write_coreregister_u32(target, value, 0x1D);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write PSPLIM_S value 0x%" PRIx32 "", value);
+			break;
+
+		case ARMV8M_MSPLIM_NS:
+			retval = cortexm_dap_write_coreregister_u32(target, value, 0x1E);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write MSPLIM_NS value 0x%" PRIx32 "", value);
+			break;
+
+		case ARMV8M_PSPLIM_NS:
+			retval = cortexm_dap_write_coreregister_u32(target, value, 0x1F);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write PSPLIM_NS value 0x%" PRIx32 "", value);
+			break;
+
+		case ARMV8M_PRIMASK_S:
+		case ARMV8M_BASEPRI_S:
+		case ARMV8M_FAULTMASK_S:
+		case ARMV8M_CONTROL_S:
+			retval = cortexm_dap_read_coreregister_u32(target, &reg, 0x22);
+			if (retval != ERROR_OK)
+				return retval;
+
+			switch (num) {
+				case ARMV8M_PRIMASK_S:
+					buf_set_u32((uint8_t *)&reg, 0, 1, value);
+					break;
+
+				case ARMV8M_BASEPRI_S:
+					buf_set_u32((uint8_t *)&reg, 8, 8, value);
+					break;
+
+				case ARMV8M_FAULTMASK_S:
+					buf_set_u32((uint8_t *)&reg, 16, 1, value);
+					break;
+
+				case ARMV8M_CONTROL_S:
+					buf_set_u32((uint8_t *)&reg, 24, 2, value);
+					break;
+			}
+			retval = cortexm_dap_write_coreregister_u32(target, reg, 0x22);
+			if (retval != ERROR_OK)
+				return retval;
+			LOG_DEBUG("write special reg %i value 0x%" PRIx32 " ", (int)num, value);
+			break;
+
+		case ARMV8M_PRIMASK_NS:
+		case ARMV8M_BASEPRI_NS:
+		case ARMV8M_FAULTMASK_NS:
+		case ARMV8M_CONTROL_NS:
+			retval = cortexm_dap_read_coreregister_u32(target, &reg, 0x23);
+			if (retval != ERROR_OK)
+				return retval;
+
+			switch (num) {
+				case ARMV8M_PRIMASK_NS:
+					buf_set_u32((uint8_t *)&reg, 0, 1, value);
+					break;
+
+				case ARMV8M_BASEPRI_NS:
+					buf_set_u32((uint8_t *)&reg, 8, 8, value);
+					break;
+
+				case ARMV8M_FAULTMASK_NS:
+					buf_set_u32((uint8_t *)&reg, 16, 1, value);
+					break;
+
+				case ARMV8M_CONTROL_NS:
+					buf_set_u32((uint8_t *)&reg, 24, 2, value);
+					break;
+			}
+			retval = cortexm_dap_write_coreregister_u32(target, reg, 0x23);
+			if (retval != ERROR_OK)
+				return retval;
 			LOG_DEBUG("write special reg %i value 0x%" PRIx32 " ", (int)num, value);
 			break;
 
@@ -1887,6 +2157,9 @@ void cortex_m_dwt_setup(struct cortex_m_common *cm, struct target *target)
 		return;
 	}
 
+	target_read_u32(target, DWT_DEVARCH, &cm->dwt_devarch);
+	LOG_DEBUG("DWT_DEVARCH: 0x%" PRIx32, cm->dwt_devarch);
+
 	cm->dwt_num_comp = (dwtcr >> 28) & 0xF;
 	cm->dwt_comp_available = cm->dwt_num_comp;
 	cm->dwt_comparator_list = calloc(cm->dwt_num_comp,
@@ -1964,16 +2237,16 @@ static void cortex_m_dwt_free(struct target *target)
 	cm->dwt_cache = NULL;
 }
 
-#define MVFR0 0xe000ef40
-#define MVFR1 0xe000ef44
+#define MVFR0 			0xe000ef40
+#define MVFR1 			0xe000ef44
 
-#define MVFR0_DEFAULT_M4 0x10110021
-#define MVFR1_DEFAULT_M4 0x11000011
+#define MVFR0_DEFAULT_M4 	0x10110021
+#define MVFR1_DEFAULT_M4 	0x11000011
 
-#define MVFR0_DEFAULT_M7_SP 0x10110021
-#define MVFR0_DEFAULT_M7_DP 0x10110221
-#define MVFR1_DEFAULT_M7_SP 0x11000011
-#define MVFR1_DEFAULT_M7_DP 0x12000011
+#define MVFR0_DEFAULT_M7_M33_SP 0x10110021
+#define MVFR0_DEFAULT_M7_DP 	0x10110221
+#define MVFR1_DEFAULT_M7_M33_SP 0x11000011
+#define MVFR1_DEFAULT_M7_DP 	0x12000011
 
 int cortex_m_examine(struct target *target)
 {
@@ -2017,6 +2290,19 @@ int cortex_m_examine(struct target *target)
 		/* Get CPU Type */
 		i = (cpuid >> 4) & 0xf;
 
+		switch (cpuid & ARM_CPUID_PARTNO_MASK) {
+			case CORTEX_M23_PARTNO:
+				i = 23;
+				break;
+
+			case CORTEX_M33_PARTNO:
+				i = 33;
+				break;
+
+			default:
+				break;
+		}
+
 		LOG_DEBUG("Cortex-M%d r%" PRId8 "p%" PRId8 " processor detected",
 				i, (uint8_t)((cpuid >> 20) & 0xf), (uint8_t)((cpuid >> 0) & 0xf));
 		if (i == 7) {
@@ -2037,12 +2323,12 @@ int cortex_m_examine(struct target *target)
 				LOG_DEBUG("Cortex-M%d floating point feature FPv4_SP found", i);
 				armv7m->fp_feature = FPv4_SP;
 			}
-		} else if (i == 7) {
+		} else if (i == 7 || i == 33) {
 			target_read_u32(target, MVFR0, &mvfr0);
 			target_read_u32(target, MVFR1, &mvfr1);
 
-			/* test for floating point features on Cortex-M7 */
-			if ((mvfr0 == MVFR0_DEFAULT_M7_SP) && (mvfr1 == MVFR1_DEFAULT_M7_SP)) {
+			/* test for floating point features on Cortex-M7 & Cortex-M33 */
+			if ((mvfr0 == MVFR0_DEFAULT_M7_M33_SP) && (mvfr1 == MVFR1_DEFAULT_M7_M33_SP)) {
 				LOG_DEBUG("Cortex-M%d floating point feature FPv5_SP found", i);
 				armv7m->fp_feature = FPv5_SP;
 			} else if ((mvfr0 == MVFR0_DEFAULT_M7_DP) && (mvfr1 == MVFR1_DEFAULT_M7_DP)) {

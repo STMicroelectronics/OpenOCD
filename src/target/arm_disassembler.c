@@ -336,8 +336,8 @@ static int evaluate_blx_imm(uint32_t opcode,
 			opcode,
 			target_address);
 
-	instruction->info.b_bl_bx_blx.reg_operand = -1;
-	instruction->info.b_bl_bx_blx.target_address = target_address;
+	instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = -1;
+	instruction->info.b_bl_bx_blx_bxns_blxns.target_address = target_address;
 
 	return ERROR_OK;
 }
@@ -378,8 +378,8 @@ static int evaluate_b_bl(uint32_t opcode,
 			COND(opcode),
 			target_address);
 
-	instruction->info.b_bl_bx_blx.reg_operand = -1;
-	instruction->info.b_bl_bx_blx.target_address = target_address;
+	instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = -1;
+	instruction->info.b_bl_bx_blx_bxns_blxns.target_address = target_address;
 
 	return ERROR_OK;
 }
@@ -1430,8 +1430,8 @@ static int evaluate_misc_instr(uint32_t opcode,
 		snprintf(instruction->text, 128, "0x%8.8" PRIx32 "\t0x%8.8" PRIx32 "\tBX%s r%i",
 				address, opcode, COND(opcode), Rm);
 
-		instruction->info.b_bl_bx_blx.reg_operand = Rm;
-		instruction->info.b_bl_bx_blx.target_address = -1;
+		instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = Rm;
+		instruction->info.b_bl_bx_blx_bxns_blxns.target_address = -1;
 	}
 
 	/* BXJ - "Jazelle" support (ARMv5-J) */
@@ -1444,8 +1444,8 @@ static int evaluate_misc_instr(uint32_t opcode,
 				"0x%8.8" PRIx32 "\t0x%8.8" PRIx32 "\tBXJ%s r%i",
 				address, opcode, COND(opcode), Rm);
 
-		instruction->info.b_bl_bx_blx.reg_operand = Rm;
-		instruction->info.b_bl_bx_blx.target_address = -1;
+		instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = Rm;
+		instruction->info.b_bl_bx_blx_bxns_blxns.target_address = -1;
 	}
 
 	/* CLZ */
@@ -1474,8 +1474,8 @@ static int evaluate_misc_instr(uint32_t opcode,
 		snprintf(instruction->text, 128, "0x%8.8" PRIx32 "\t0x%8.8" PRIx32 "\tBLX%s r%i",
 				address, opcode, COND(opcode), Rm);
 
-		instruction->info.b_bl_bx_blx.reg_operand = Rm;
-		instruction->info.b_bl_bx_blx.target_address = -1;
+		instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = Rm;
+		instruction->info.b_bl_bx_blx_bxns_blxns.target_address = -1;
 	}
 
 	/* Enhanced DSP add/subtracts */
@@ -2086,7 +2086,7 @@ static int evaluate_b_bl_blx_thumb(uint16_t opcode,
 			break;
 		/* BL/BLX prefix */
 		case 2:
-			instruction->type = ARM_UNKNOWN_INSTUCTION;
+			instruction->type = ARM_UNKNOWN_INSTRUCTION;
 			mnemonic = "prefix";
 			target_address = offset << 12;
 			break;
@@ -2110,8 +2110,8 @@ static int evaluate_b_bl_blx_thumb(uint16_t opcode,
 			"0x%8.8" PRIx32 "  0x%4.4x    \t%s\t%#8.8" PRIx32,
 			address, opcode, mnemonic, target_address);
 
-	instruction->info.b_bl_bx_blx.reg_operand = -1;
-	instruction->info.b_bl_bx_blx.target_address = target_address;
+	instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = -1;
+	instruction->info.b_bl_bx_blx_bxns_blxns.target_address = target_address;
 
 	return ERROR_OK;
 }
@@ -2286,7 +2286,7 @@ static int evaluate_data_proc_thumb(uint16_t opcode,
 				break;
 			case 0x3:
 				if ((opcode & 0x7) == 0x0) {
-					instruction->info.b_bl_bx_blx.reg_operand = Rm;
+					instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = Rm;
 					if (H1) {
 						instruction->type = ARM_BLX;
 						snprintf(instruction->text, 128,
@@ -2298,6 +2298,21 @@ static int evaluate_data_proc_thumb(uint16_t opcode,
 						snprintf(instruction->text, 128,
 								"0x%8.8" PRIx32
 								"  0x%4.4x    \tBX\tr%i",
+								address, opcode, Rm);
+					}
+				} else if ((opcode & 0x7) == 0x4) {
+					instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = Rm;
+					if (H1) {
+						instruction->type = ARM_BLXNS;
+						snprintf(instruction->text, 128,
+								"0x%8.8" PRIx32
+								"  0x%4.4x    \tBLXNS\tr%i",
+								address, opcode, Rm);
+					} else {
+						instruction->type = ARM_BXNS;
+						snprintf(instruction->text, 128,
+								"0x%8.8" PRIx32
+								"  0x%4.4x    \tBXNS\tr%i",
 								address, opcode, Rm);
 					}
 				} else {
@@ -2747,8 +2762,8 @@ static int evaluate_cond_branch_thumb(uint16_t opcode,
 			arm_condition_strings[cond], target_address);
 
 	instruction->type = ARM_B;
-	instruction->info.b_bl_bx_blx.reg_operand = -1;
-	instruction->info.b_bl_bx_blx.target_address = target_address;
+	instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = -1;
+	instruction->info.b_bl_bx_blx_bxns_blxns.target_address = target_address;
 
 	return ERROR_OK;
 }
@@ -3050,8 +3065,8 @@ static int t2ev_b_bl(uint32_t opcode, uint32_t address,
 	default:
 		return ERROR_COMMAND_SYNTAX_ERROR;
 	}
-	instruction->info.b_bl_bx_blx.reg_operand = -1;
-	instruction->info.b_bl_bx_blx.target_address = address;
+	instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = -1;
+	instruction->info.b_bl_bx_blx_bxns_blxns.target_address = address;
 	sprintf(cp, "%s\t%#8.8" PRIx32, inst, address);
 
 	return ERROR_OK;
@@ -3086,8 +3101,8 @@ static int t2ev_cond_b(uint32_t opcode, uint32_t address,
 	address += offset << 1;
 
 	instruction->type = ARM_B;
-	instruction->info.b_bl_bx_blx.reg_operand = -1;
-	instruction->info.b_bl_bx_blx.target_address = address;
+	instruction->info.b_bl_bx_blx_bxns_blxns.reg_operand = -1;
+	instruction->info.b_bl_bx_blx_bxns_blxns.target_address = address;
 	sprintf(cp, "B%s.W\t%#8.8" PRIx32,
 			arm_condition_strings[cond],
 			address);
@@ -4466,6 +4481,36 @@ ldrh_literal:
 	return ERROR_COMMAND_SYNTAX_ERROR;
 }
 
+static int t2ev_test_target(uint32_t opcode, uint32_t address,
+			       struct arm_instruction *instruction, char *cp)
+{
+	char *mnemonic = NULL;
+	int rn = (opcode >> 16) & 0xf;
+	int rd = (opcode >> 8) & 0xf;
+	char *suffix = "";
+	char *suffix2 = "";
+
+	mnemonic = "TT";
+	instruction->type = ARM_TT;
+
+	if (opcode & (1 << 6)) {
+		suffix = "A";
+		instruction->type = ARM_TTA;
+		if (opcode & (1 << 7)) {
+			suffix2 = "T";
+			instruction->type = ARM_TTAT;
+		}
+	}
+	else if (opcode & (1 << 7)) {
+		suffix2 = "T";
+		instruction->type = ARM_TTT;
+	}
+
+	sprintf(cp, "%s%s%s\tr%d, r%d",	mnemonic, suffix, suffix2, rd, rn);
+
+	return ERROR_OK;
+}
+
 /*
  * REVISIT for Thumb2 instructions, instruction->type and friends aren't
  * always set.  That means eventual arm_simulate_step() support for Thumb2
@@ -4513,8 +4558,21 @@ int thumb2_opcode(struct target *target, uint32_t address, struct arm_instructio
 	cp = strchr(instruction->text, 0);
 	retval = ERROR_FAIL;
 
+	/* ARMv8-M: Secure Gateway */
+	if (opcode == 0xe97fe97f) {
+		char *mnemonic = NULL;
+		instruction->type = ARM_SG;
+		mnemonic = "SG";
+		sprintf(cp, "%s", mnemonic);
+		retval = ERROR_OK;
+	}
+
+	/* ARMv8-M: Test Target */
+	else if ((opcode & 0xe840f000) == 0xe840f000)
+		retval = t2ev_test_target(opcode, address, instruction, cp);
+
 	/* ARMv7-M: A5.3.1 Data processing (modified immediate) */
-	if ((opcode & 0x1a008000) == 0x10000000)
+	else if ((opcode & 0x1a008000) == 0x10000000)
 		retval = t2ev_data_mod_immed(opcode, address, instruction, cp);
 
 	/* ARMv7-M: A5.3.3 Data processing (plain binary immediate) */

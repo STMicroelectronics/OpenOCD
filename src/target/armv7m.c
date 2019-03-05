@@ -48,7 +48,7 @@
 
 static const char * const armv7m_exception_strings[] = {
 	"", "Reset", "NMI", "HardFault",
-	"MemManage", "BusFault", "UsageFault", "RESERVED",
+	"MemManage", "BusFault", "UsageFault", "SecureFault",
 	"RESERVED", "RESERVED", "RESERVED", "SVCall",
 	"DebugMonitor", "RESERVED", "PendSV", "SysTick"
 };
@@ -112,6 +112,23 @@ static const struct {
 	{ ARMV7M_BASEPRI, "basepri", 8, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
 	{ ARMV7M_FAULTMASK, "faultmask", 1, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
 	{ ARMV7M_CONTROL, "control", 2, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
+
+	{ ARMV8M_MSP_NS, "msp_ns", 32, REG_TYPE_DATA_PTR, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_PSP_NS, "psp_ns", 32, REG_TYPE_DATA_PTR, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_MSP_S, "msp_s", 32, REG_TYPE_DATA_PTR, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_PSP_S, "psp_s", 32, REG_TYPE_DATA_PTR, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_MSPLIM_S, "msplim_s", 32, REG_TYPE_DATA_PTR, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_PSPLIM_S, "psplim_s", 32, REG_TYPE_DATA_PTR, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_MSPLIM_NS, "msplim_ns", 32, REG_TYPE_DATA_PTR, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_PSPLIM_NS, "psplim_ns", 32, REG_TYPE_DATA_PTR, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_PRIMASK_S, "primask_s", 1, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_BASEPRI_S, "basepri_s", 8, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_FAULTMASK_S, "faultmask_s", 1, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_CONTROL_S, "control_s", 2, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_PRIMASK_NS, "primask_ns", 1, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_BASEPRI_NS, "basepri_ns", 8, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_FAULTMASK_NS, "faultmask_ns", 1, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
+	{ ARMV8M_CONTROL_NS, "control_ns", 2, REG_TYPE_INT8, "system", "org.gnu.gdb.arm.m-system" },
 
 	{ ARMV7M_D0, "d0", 64, REG_TYPE_IEEE_DOUBLE, "float", "org.gnu.gdb.arm.vfp" },
 	{ ARMV7M_D1, "d1", 64, REG_TYPE_IEEE_DOUBLE, "float", "org.gnu.gdb.arm.vfp" },
@@ -191,7 +208,7 @@ static int armv7m_get_core_reg(struct reg *reg)
 	if (target->state != TARGET_HALTED)
 		return ERROR_TARGET_NOT_HALTED;
 
-	retval = arm->read_core_reg(target, reg, armv7m_reg->num, arm->core_mode);
+	retval = arm->read_core_reg(target, reg, reg->number, arm->core_mode);
 
 	return retval;
 }

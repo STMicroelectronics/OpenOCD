@@ -20,13 +20,15 @@
 #define OPENOCD_TARGET_ARM_DISASSEMBLER_H
 
 enum arm_instruction_type {
-	ARM_UNKNOWN_INSTUCTION,
+	ARM_UNKNOWN_INSTRUCTION,
 
 	/* Branch instructions */
 	ARM_B,
 	ARM_BL,
 	ARM_BX,
+	ARM_BXNS,
 	ARM_BLX,
+	ARM_BLXNS,
 
 	/* Data processing instructions */
 	ARM_AND,
@@ -120,10 +122,17 @@ enum arm_instruction_type {
 	ARM_LDRD,
 	ARM_STRD,
 
+	/* Secure instructions */
+	ARM_SG,
+	ARM_TT,
+	ARM_TTT,
+	ARM_TTA,
+	ARM_TTAT,
+
 	ARM_UNDEFINED_INSTRUCTION = 0xffffffff,
 };
 
-struct arm_b_bl_bx_blx_instr {
+struct arm_b_bl_bx_blx_bxns_blxns_instr {
 	int reg_operand;
 	uint32_t target_address;
 };
@@ -185,7 +194,7 @@ struct arm_instruction {
 	unsigned instruction_size;
 
 	union {
-		struct arm_b_bl_bx_blx_instr b_bl_bx_blx;
+		struct arm_b_bl_bx_blx_bxns_blxns_instr b_bl_bx_blx_bxns_blxns;
 		struct arm_data_proc_instr data_proc;
 		struct arm_load_store_instr load_store;
 		struct arm_load_store_multiple_instr load_store_multiple;
