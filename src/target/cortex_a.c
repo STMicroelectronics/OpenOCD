@@ -2019,7 +2019,8 @@ static int cortex_a_write_cpu_memory_slow(struct target *target,
 {
 	/* Writes count objects of size size from *buffer. Old value of DSCR must
 	 * be in *dscr; updated to new value. This is slow because it works for
-	 * non-word-sized objects and (maybe) unaligned accesses. If size == 4 and
+	 * non-word-sized objects. Avoid unaligned accesses as they do not work
+	 * on memory address space without "Normal" attribute. If size == 4 and
 	 * the address is aligned, cortex_a_write_cpu_memory_fast should be
 	 * preferred.
 	 * Preconditions:
@@ -2176,7 +2177,22 @@ static int cortex_a_write_cpu_memory(struct target *target,
 		/* We are doing a word-aligned transfer, so use fast mode. */
 		retval = cortex_a_write_cpu_memory_fast(target, count, buffer, &dscr);
 	} else {
-		/* Use slow path. */
+		/* Use slow path. Adjust size for aligned accesses */
+		switch (address % 4) {
+			case 1:
+			case 3:
+				count *= size;
+				size = 1;
+				break;
+			case 2:
+				if (size == 4) {
+					count *= 2;
+					size = 2;
+				}
+			case 0:
+			default:
+				break;
+		}
 		retval = cortex_a_write_cpu_memory_slow(target, size, count, buffer, &dscr);
 	}
 
@@ -2262,7 +2278,8 @@ static int cortex_a_read_cpu_memory_slow(struct target *target,
 {
 	/* Reads count objects of size size into *buffer. Old value of DSCR must be
 	 * in *dscr; updated to new value. This is slow because it works for
-	 * non-word-sized objects and (maybe) unaligned accesses. If size == 4 and
+	 * non-word-sized objects. Avoid unaligned accesses as they do not work
+	 * on memory address space without "Normal" attribute. If size == 4 and
 	 * the address is aligned, cortex_a_read_cpu_memory_fast should be
 	 * preferred.
 	 * Preconditions:
@@ -2478,7 +2495,23 @@ static int cortex_a_read_cpu_memory(struct target *target,
 		/* We are doing a word-aligned transfer, so use fast mode. */
 		retval = cortex_a_read_cpu_memory_fast(target, count, buffer, &dscr);
 	} else {
-		/* Use slow path. */
+		/* Use slow path. Adjust size for aligned accesses */
+		switch (address % 4) {
+			case 1:
+			case 3:
+				count *= size;
+				size = 1;
+				break;
+			case 2:
+				if (size == 4) {
+					count *= 2;
+					size = 2;
+				}
+				break;
+			case 0:
+			default:
+				break;
+		}
 		retval = cortex_a_read_cpu_memory_slow(target, size, count, buffer, &dscr);
 	}
 
