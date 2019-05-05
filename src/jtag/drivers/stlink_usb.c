@@ -2435,7 +2435,7 @@ static int stlink_usb_read_ap_mem(void *handle, uint8_t ap_num, uint32_t csw,
 
 	while (count) {
 
-		bytes_remaining = (size != 1) ? \
+		bytes_remaining = (size != 1) ?
 				stlink_max_block_size(h->max_mem_packet, addr) : stlink_usb_block(h);
 
 		if (count < bytes_remaining)
@@ -2527,7 +2527,7 @@ static int stlink_usb_write_ap_mem(void *handle, uint8_t ap_num, uint32_t csw,
 
 	while (count) {
 
-		bytes_remaining = (size != 1) ? \
+		bytes_remaining = (size != 1) ?
 				stlink_max_block_size(h->max_mem_packet, addr) : stlink_usb_block(h);
 
 		if (count < bytes_remaining)
@@ -2658,7 +2658,7 @@ static int stlink_match_speed_map(const struct speed_map *map, unsigned int map_
 		match = false;
 
 	if (!match && query) {
-		LOG_INFO("Unable to match requested speed %d kHz, using %d kHz", \
+		LOG_INFO("Unable to match requested speed %d kHz, using %d kHz",
 				khz, map[speed_index].speed);
 	}
 
