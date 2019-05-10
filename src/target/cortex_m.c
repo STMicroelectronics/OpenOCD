@@ -532,21 +532,21 @@ static int cortex_m_poll(struct target *target)
 	if (cortex_m->dcb_dhcsr & S_HALT) {
 		target->state = TARGET_HALTED;
 
-		if ((prev_target_state == TARGET_RUNNING) || (prev_target_state == TARGET_RESET)) {
+		if (prev_target_state != TARGET_HALTED) {
 			retval = cortex_m_debug_entry(target);
 			if (retval != ERROR_OK)
 				return retval;
+		}
 
+		if (prev_target_state == TARGET_RUNNING || prev_target_state == TARGET_RESET) {
 			if (arm_semihosting(target, &retval) != 0)
 				return retval;
 
 			target_call_event_callbacks(target, TARGET_EVENT_HALTED);
 		}
+
 		if (prev_target_state == TARGET_DEBUG_RUNNING) {
 			LOG_DEBUG(" ");
-			retval = cortex_m_debug_entry(target);
-			if (retval != ERROR_OK)
-				return retval;
 
 			target_call_event_callbacks(target, TARGET_EVENT_DEBUG_HALTED);
 		}
