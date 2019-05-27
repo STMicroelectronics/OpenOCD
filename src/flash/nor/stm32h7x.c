@@ -137,7 +137,7 @@ struct stm32h7x_flash_bank {
 };
 
 static const struct stm32h7x_rev stm32_450_revs[] = {
-	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1003, "Y" }, { 0x2001, "X"  },
+	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1003, "Y" }, { 0x2001, "X"  }, { 0x2003, "V"  },
 };
 
 static const struct stm32h7x_part_info stm32h7x_parts[] = {
