@@ -3325,6 +3325,17 @@ static int stlink_dap_quit(void)
 	return stlink_usb_close(stlink_dap_handle);
 }
 
+static int stlink_dap_config_trace(bool enabled, enum tpiu_pin_protocol pin_protocol,
+		uint32_t port_size, unsigned int *trace_freq)
+{
+	return stlink_config_trace(stlink_dap_handle, enabled, pin_protocol, port_size, trace_freq);
+}
+
+static int stlink_dap_trace_read(uint8_t *buf, size_t *size)
+{
+	return stlink_usb_trace_read(stlink_dap_handle, buf, size);
+}
+
 COMMAND_HANDLER(stlink_dap_serial_command)
 {
 	LOG_DEBUG("stlink_dap_serial_command");
@@ -3417,4 +3428,6 @@ struct jtag_interface stlink_dap_interface = {
 	.khz = stlink_dap_khz,
 	.init = stlink_dap_init,
 	.quit = stlink_dap_quit,
+	.config_trace = stlink_dap_config_trace,
+	.poll_trace = stlink_dap_trace_read,
 };
