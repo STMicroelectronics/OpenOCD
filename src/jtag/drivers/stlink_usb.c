@@ -1157,7 +1157,7 @@ static int stlink_usb_init_mode(void *handle, bool connect_under_reset)
 		return res;
 
 	/* assert SRST again: a little bit late but now the adapter knows for sure what pin to use */
-	if (h->transport == HL_TRANSPORT_SWIM && connect_under_reset) {
+	if (connect_under_reset) {
 		res = stlink_usb_assert_srst(handle, 0);
 		if (res != ERROR_OK)
 			return res;
