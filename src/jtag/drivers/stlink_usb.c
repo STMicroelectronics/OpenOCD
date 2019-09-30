@@ -2958,7 +2958,8 @@ static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size, bool addrinc)
 	struct stlink_usb_handle_s *h = stlink_dap_handle;
 	if ((h->version.stlink == 2 && h->version.jtag >= 32) || (h->version.stlink == 3 && h->version.jtag >= 2)) {
 		csw = ap->csw_default;
-		if (csw != (ap->csw_value & ~(CSW_SIZE_MASK | CSW_ADDRINC_MASK))) {
+//		if (csw != (ap->csw_value & ~(CSW_SIZE_MASK | CSW_ADDRINC_MASK))) {
+		if (1) {
 			retval = dap_queue_ap_write(ap, MEM_AP_REG_CSW, csw);
 			if (retval != ERROR_OK) {
 				ap->csw_value = 0;
