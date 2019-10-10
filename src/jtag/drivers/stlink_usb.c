@@ -2937,7 +2937,7 @@ int stlink_dap_dap_write(unsigned short dap_port, unsigned short addr, uint32_t 
  *
  * This workaround leverage the CSW caching operated by ST-Link. At every
  * memory R/W, ST-Link computes the new CSW value based on word size. If it
- * match the previous CSW value than it has wrote in CSW register, ST-Link
+ * match the previous CSW value that it has wrote in CSW register, ST-Link
  * will not write in CSW register again.
  *
  * Here we track the word size used in the last memory R/W. If it does not
@@ -2956,19 +2956,6 @@ static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size, bool addrinc)
 	ap_num = ap->ap_num;
 
 	struct stlink_usb_handle_s *h = stlink_dap_handle;
-	if ((h->version.stlink == 2 && h->version.jtag >= 32) || (h->version.stlink == 3 && h->version.jtag >= 2)) {
-		csw = ap->csw_default;
-//		if (csw != (ap->csw_value & ~(CSW_SIZE_MASK | CSW_ADDRINC_MASK))) {
-		if (1) {
-			retval = dap_queue_ap_write(ap, MEM_AP_REG_CSW, csw);
-			if (retval != ERROR_OK) {
-				ap->csw_value = 0;
-				return retval;
-			}
-			ap->csw_value = csw;
-		}
-		return ERROR_OK;
-	}
 
 	switch (size) {
 	case 2:
@@ -2992,12 +2979,14 @@ static int stlink_dap_set_csw(struct adiv5_ap *ap, uint32_t size, bool addrinc)
 	}
 	csw |= ap->csw_default;
 
-	if (ap_csw_size_cached[ap_num] != size) {
-		ap_csw_size_cached[ap_num] = size;
+	if ((h->version.stlink == 2 && h->version.jtag < 32) || (h->version.stlink == 3 && h->version.jtag < 2)) {
+		if (ap_csw_size_cached[ap_num] != size) {
+			ap_csw_size_cached[ap_num] = size;
 
-		/* The mem read below will change CSW */
-		ap->csw_value = 0;
-		stlink_usb_read_ap_mem(stlink_dap_handle, ap_num, 0x00000000, size, 1, dummy);
+			/* The mem read below will change CSW */
+			ap->csw_value = 0;
+			stlink_usb_read_ap_mem(stlink_dap_handle, ap_num, 0x00000000, size, 1, dummy);
+		}
 	}
 
 	if (ap->csw_value != csw) {
