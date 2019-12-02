@@ -77,7 +77,7 @@
 #define FLASH_SNB(a)	(a << 3)
 
 /* FLASH_SR register bits */
-#define FLASH_BSY      (1 << 16) /* Operation in progres */
+#define FLASH_BSY      (1 << 16) /* Operation in progress */
 #define FLASH_OPTWERR  (1 << 13) /* Option modification error */
 #define FLASH_PGSERR   (1 << 7)  /* Programming sequence error */
 #define FLASH_SIZERR   (1 << 6)  /* Programming size error */
@@ -87,8 +87,8 @@
 #define FLASH_OPERR    (1 << 1)  /* Operation error */
 #define FLASH_EOP      (1 << 0)  /* End of operation */
 
-#define FLASH_ERROR (FLASH_PROGERR | FLASH_PGSERR | FLASH_SIZERR | FLASH_PGAERR \
-			| FLASH_WRPERR | FLASH_OPERR | FLASH_OPTWERR)
+#define FLASH_ERROR (FLASH_OPTWERR | FLASH_PGSERR | FLASH_SIZERR | FLASH_PGAERR \
+			| FLASH_WRPERR | FLASH_PROGERR | FLASH_OPERR)
 
 /* register unlock keys */
 #define KEY1           0x45670123
@@ -288,22 +288,21 @@ static inline int stm32x_get_flash_status(struct flash_bank *bank, uint32_t *sta
 	return target_read_u32(bank->target, stm32x_info->flash_base + FLASH_SR, status);
 }
 
-static int stm32x_wait_status_busy(struct flash_bank *bank, int timeout)
+static int stm32x_wait_status_busy(struct flash_bank *bank, uint32_t *status, int timeout)
 {
 	struct target *target = bank->target;
 	struct stm32l5x_flash_bank *stm32x_info = bank->driver_priv;
-	uint32_t status;
 	int retval = ERROR_OK;
 
 	/* wait for busy to clear */
 	for (;;) {
-		retval = stm32x_get_flash_status(bank, &status);
+		retval = stm32x_get_flash_status(bank, status);
 		if (retval != ERROR_OK) {
 			LOG_INFO("wait_status_busy, target_*_u32 : error : remote address 0x%x", stm32x_info->flash_base);
 			return retval;
 		}
 
-		if ((status & FLASH_BSY) == 0)
+		if ((*status & FLASH_BSY) == 0)
 			break;
 
 		if (timeout-- <= 0) {
@@ -313,19 +312,22 @@ static int stm32x_wait_status_busy(struct flash_bank *bank, int timeout)
 		alive_sleep(1);
 	}
 
-	if (status & FLASH_WRPERR) {
-		LOG_INFO("wait_status_busy, WRPERR : error : remote address 0x%x", stm32x_info->flash_base);
+	if (*status & FLASH_ERROR) {
+		if (*status & FLASH_WRPERR)
+			LOG_ERROR("wait_status_busy, WRPERR : error : remote address 0x%x", stm32x_info->flash_base);
+		else
+			LOG_ERROR("wait_status_busy, flash errors occurred");
+
 		retval = ERROR_FAIL;
 	}
 
-	/* Clear but report errors */
-	if (status & FLASH_ERROR) {
-		/* If this operation fails, we ignore it and report the original
-		* retval
-		*/
+	/* Clear all FLASH_SR flags */
+	if (*status & (FLASH_ERROR | FLASH_EOP)) {
+		/* If this operation fails, we ignore it and report the original retval */
 		target_write_u32(target, stm32x_info->flash_base + FLASH_SR,
-					status & FLASH_ERROR);
+					*status & (FLASH_ERROR | FLASH_EOP));
 	}
+
 	return retval;
 }
 
@@ -465,7 +467,7 @@ static int stm32x_read_options(struct flash_bank *bank)
 	/* fixme read PCRop options */
 
 	if (stm32x_info->option_bytes.RDP != 0xAA)
-		LOG_INFO("Device RDP Level 1 Set");
+		LOG_INFO("Device RDP is set");
 
 	return ERROR_OK;
 }
@@ -544,9 +546,17 @@ static int stm32x_write_options(struct flash_bank *bank)
 		return retval;
 
 	/* wait for completion */
-	retval = stm32x_wait_status_busy(bank, FLASH_ERASE_TIMEOUT);
+	uint32_t flash_sr;
+	retval = stm32x_wait_status_busy(bank, &flash_sr, FLASH_ERASE_TIMEOUT);
 	if (retval != ERROR_OK)
 		return retval;
+
+	if (flash_sr & FLASH_ERROR) {
+		LOG_ERROR("flash operation failed");
+		return FLASH_ERROR;
+	}
+
+	/* FIXME need to lock flash and options after failure too */
 
 	/* relock option register */
 	retval = target_write_u32(target, stm32x_info->flash_base + FLASH_CR, FLASH_OPTLOCK);
@@ -606,7 +616,11 @@ static int stm32x_erase(struct flash_bank *bank, int first, int last)
 	if (bank->target->state != TARGET_HALTED)
 		return ERROR_TARGET_NOT_HALTED;
 
-	if (stm32x_info->tz_enabled) {
+	uint32_t flash_base_orig = stm32x_info->flash_base;
+
+	stm32x_read_options(bank);
+
+	if (stm32x_info->tz_enabled && stm32x_info->option_bytes.RDP == 0xAA) {
 		retval = stm32x_set_sec_bb_reg(bank);
 		if (retval != ERROR_OK)
 			return retval;
@@ -615,8 +629,10 @@ static int stm32x_erase(struct flash_bank *bank, int first, int last)
 	}
 
 	retval = stm32x_unlock_reg(bank);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
 	/*
 	Sector Erase
@@ -639,12 +655,15 @@ static int stm32x_erase(struct flash_bank *bank, int first, int last)
 					FLASH_BKER | FLASH_PER
 					| FLASH_SNB((i + l5_part_info->hole_sectors)) | FLASH_START);
 		if (retval != ERROR_OK) {
+			stm32x_info->flash_base = flash_base_orig;
 			LOG_ERROR("erase sector error %d", i);
 			return retval;
 		}
 
-		retval = stm32x_wait_status_busy(bank, FLASH_ERASE_TIMEOUT);
+		uint32_t flash_sr;
+		retval = stm32x_wait_status_busy(bank, &flash_sr, FLASH_ERASE_TIMEOUT);
 		if (retval != ERROR_OK) {
+			stm32x_info->flash_base = flash_base_orig;
 			LOG_ERROR("erase time-out error sector %d", i);
 			return retval;
 		}
@@ -654,12 +673,13 @@ static int stm32x_erase(struct flash_bank *bank, int first, int last)
 
 	retval = target_write_u32(target, stm32x_info->flash_base + FLASH_CR, FLASH_LOCK);
 	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		LOG_ERROR("error during the lock of flash");
 		return retval;
 	}
 
-	if (stm32x_info->tz_enabled) {
-		stm32x_info->flash_base -= 4;
+	if (stm32x_info->tz_enabled && stm32x_info->option_bytes.RDP == 0xAA) {
+		stm32x_info->flash_base = flash_base_orig;
 		retval = stm32x_reset_sec_bb_reg(bank);
 		if (retval != ERROR_OK)
 			return retval;
@@ -845,6 +865,58 @@ static int stm32x_write_block(struct flash_bank *bank, const uint8_t *buffer,
 	return retval;
 }
 
+static int stm32x_write_block_without_loader(struct flash_bank *bank, const uint8_t *buffer,
+				uint32_t offset, uint32_t count)
+{
+	struct target *target = bank->target;
+	uint32_t address = bank->base + offset;
+	struct stm32l5x_flash_bank *stm32x_info = bank->driver_priv;
+	int retval = ERROR_OK;
+
+	uint32_t flash_cr, flash_sr;
+
+	/* set PG in FLASH_CR */
+	retval = target_read_u32(target, stm32x_info->flash_base + FLASH_CR, &flash_cr);
+	if (retval != ERROR_OK)
+		return retval;
+
+	retval = target_write_u32(target, stm32x_info->flash_base + FLASH_CR, flash_cr | FLASH_PG);
+	if (retval != ERROR_OK)
+		return retval;
+
+
+	/* write directly to flash memory */
+	const uint8_t *src = buffer;
+	while (count--) {
+		retval = target_write_memory(target, address, 4, 2, src);
+		if (retval != ERROR_OK)
+			return retval;
+
+		/* wait for BSY bit */
+		stm32x_wait_status_busy(bank, &flash_sr, FLASH_WRITE_TIMEOUT);
+
+		/* check for errors */
+		if (flash_sr & FLASH_ERROR) {
+			LOG_ERROR("flash operation failed");
+			return ERROR_FAIL;
+		}
+
+		src += 8;
+		address += 8;
+	}
+
+	/* reset PG in FLASH_CR */
+	retval = target_read_u32(target, stm32x_info->flash_base + FLASH_CR, &flash_cr);
+	if (retval != ERROR_OK)
+		return retval;
+
+	retval = target_write_u32(target, stm32x_info->flash_base + FLASH_CR, flash_cr & ~FLASH_PG);
+	if (retval != ERROR_OK)
+		return retval;
+
+	return retval;
+}
+
 static int stm32x_write(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
@@ -874,7 +946,11 @@ static int stm32x_write(struct flash_bank *bank, const uint8_t *buffer,
 		 */
 	}
 
-	if (stm32x_info->tz_enabled) {
+	uint32_t flash_base_orig = stm32x_info->flash_base;
+	stm32x_read_options(bank);
+
+
+	if (stm32x_info->tz_enabled && stm32x_info->option_bytes.RDP == 0xAA) {
 		retval = stm32x_set_sec_bb_reg(bank);
 		if (retval != ERROR_OK)
 			return retval;
@@ -883,23 +959,32 @@ static int stm32x_write(struct flash_bank *bank, const uint8_t *buffer,
 	}
 
 	retval = stm32x_unlock_reg(bank);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
 	/* multiple words (8-byte block) to be programmed */
-	retval = stm32x_write_block(bank, buffer, offset, count/8);
+	if (stm32x_info->tz_enabled && stm32x_info->option_bytes.RDP == 0x55) {
+		LOG_INFO("RDP is level 0.5, using direct flash programming since the specified work-area could be secure !");
+		retval = stm32x_write_block_without_loader(bank, buffer, offset, count/8);
+	} else
+		retval = stm32x_write_block(bank, buffer, offset, count/8);
 
 	if ((retval != ERROR_OK) && (retval != ERROR_TARGET_RESOURCE_NOT_AVAILABLE)) {
+		stm32x_info->flash_base = flash_base_orig;
 		LOG_INFO("block write failed");
 		return retval;
 	}
 
 	retval = target_write_u32(target, stm32x_info->flash_base + FLASH_CR, FLASH_LOCK);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
-	if (stm32x_info->tz_enabled) {
-		stm32x_info->flash_base -= 4;
+	if (stm32x_info->tz_enabled && stm32x_info->option_bytes.RDP == 0xAA) {
+		stm32x_info->flash_base = flash_base_orig;
 		retval = stm32x_reset_sec_bb_reg(bank);
 		if (retval != ERROR_OK)
 			return retval;
@@ -1091,7 +1176,10 @@ static int stm32x_mass_erase(struct flash_bank *bank)
 		return ERROR_TARGET_NOT_HALTED;
 	}
 
-	if (stm32x_info->tz_enabled) {
+	uint32_t flash_base_orig = stm32x_info->flash_base;
+	stm32x_read_options(bank);
+
+	if (stm32x_info->tz_enabled && stm32x_info->option_bytes.RDP == 0xAA) {
 		retval = stm32x_set_sec_bb_reg(bank);
 		if (retval != ERROR_OK)
 			return retval;
@@ -1100,44 +1188,61 @@ static int stm32x_mass_erase(struct flash_bank *bank)
 	}
 
 	retval = stm32x_unlock_reg(bank);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
-	retval = stm32x_wait_status_busy(bank, FLASH_ERASE_TIMEOUT/10);
-	if (retval != ERROR_OK)
+	uint32_t flash_sr;
+	retval = stm32x_wait_status_busy(bank, &flash_sr, FLASH_ERASE_TIMEOUT/10);
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
 	uint32_t reg32;
 	retval = target_read_u32(target, stm32x_info->flash_base + FLASH_CR, &reg32);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
 	/* mass erase flash memory : if two banks, two bit to set: MER1 & MER2 */
 	if (stm32x_info->part_info->has_dual_bank)
 		reg32 |= FLASH_MER2;
 
 	retval = target_write_u32(target, stm32x_info->flash_base + FLASH_CR, reg32 | FLASH_MER1);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
 	retval = target_write_u32(target, stm32x_info->flash_base + FLASH_CR, reg32 | FLASH_MER1 | FLASH_START);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
-	retval = stm32x_wait_status_busy(bank, FLASH_ERASE_TIMEOUT);
-	if (retval != ERROR_OK)
+	retval = stm32x_wait_status_busy(bank, &flash_sr, FLASH_ERASE_TIMEOUT);
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
 	retval = target_read_u32(target, stm32x_info->flash_base + FLASH_CR, &reg32);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
 	retval = target_write_u32(target, stm32x_info->flash_base + FLASH_CR, reg32 | FLASH_LOCK);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stm32x_info->flash_base = flash_base_orig;
 		return retval;
+	}
 
-	if (stm32x_info->tz_enabled) {
-		stm32x_info->flash_base -= 4;
+	if (stm32x_info->tz_enabled && stm32x_info->option_bytes.RDP == 0xAA) {
+		stm32x_info->flash_base = flash_base_orig;
 		retval = stm32x_reset_sec_bb_reg(bank);
 		if (retval != ERROR_OK)
 			return retval;
