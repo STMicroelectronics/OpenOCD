@@ -94,7 +94,6 @@
 #define FLASH_BANK1_ADDRESS     0x08100000
 #define FLASH_REG_BASE_B0       0x52002000
 #define FLASH_REG_BASE_B1       0x52002100
-#define FLASH_BLOCK_SIZE        32
 
 struct stm32h7x_rev {
 	uint16_t rev;
@@ -110,12 +109,17 @@ struct stm32x_options {
 	uint8_t independent_watchdog_selection;
 };
 
+/**
+ * stm32h7x_part_info permits the store each device information and specificities.
+ * the default unit is byte unless the suffix '_kb' is used.
+ */
 struct stm32h7x_part_info {
 	uint16_t id;
 	const char *device_str;
 	const struct stm32h7x_rev *revs;
 	size_t num_revs;
-	unsigned int page_size;
+	unsigned int page_size_kb;
+	const uint32_t block_size; /* flash write word size in bytes */
 	uint16_t max_flash_size_kb;
 	uint8_t has_dual_bank;
 	uint16_t first_bank_size_kb; /* Used when has_dual_bank is true */
@@ -165,7 +169,8 @@ static const struct stm32h7x_part_info stm32h7x_parts[] = {
 	.revs				= stm32_450_revs,
 	.num_revs			= ARRAY_SIZE(stm32_450_revs),
 	.device_str			= "STM32H74x/75x",
-	.page_size			= 128,  /* 128 KB */
+	.page_size_kb		= 128,
+	.block_size			= 32, /* 256 bits*/
 	.max_flash_size_kb	= 2048,
 	.first_bank_size_kb	= 1024,
 	.has_dual_bank		= 1,
@@ -180,7 +185,8 @@ static const struct stm32h7x_part_info stm32h7x_parts[] = {
 	.revs				= stm32_480_revs,
 	.num_revs			= ARRAY_SIZE(stm32_480_revs),
 	.device_str			= "STM32H7Ax/7Bx",
-	.page_size			= 8,  /* 8 KB */
+	.page_size_kb		= 8,
+	.block_size			= 16, /* 128 bits */
 	.max_flash_size_kb	= 2048,
 	.first_bank_size_kb	= 1024,
 	.has_dual_bank		= 1,
@@ -573,18 +579,18 @@ static int stm32x_write_block(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
 	struct target *target = bank->target;
+	struct stm32h7x_flash_bank *stm32x_info = bank->driver_priv;
 	/*
-	 * If the size of the data part of the buffer is not a multiple of FLASH_BLOCK_SIZE, we get
+	 * If the size of the data part of the buffer is not a multiple of .block_size, we get
 	 * "corrupted fifo read" pointer in target_run_flash_async_algorithm()
 	 */
-	uint32_t data_size = 512 * FLASH_BLOCK_SIZE;	/* 16384 */
+	uint32_t data_size = 512 * stm32x_info->part_info->block_size;
 	uint32_t buffer_size = 8 + data_size;
 	struct working_area *write_algorithm;
 	struct working_area *source;
 	uint32_t address = bank->base + offset;
-	struct reg_param reg_params[5];
+	struct reg_param reg_params[6];
 	struct armv7m_algorithm armv7m_info;
-	struct stm32h7x_flash_bank *stm32x_info = bank->driver_priv;
 	int retval = ERROR_OK;
 
 	static const uint8_t stm32x_flash_write_code[] = {
@@ -627,21 +633,23 @@ static int stm32x_write_block(struct flash_bank *bank, const uint8_t *buffer,
 	init_reg_param(&reg_params[0], "r0", 32, PARAM_IN_OUT);		/* buffer start, status (out) */
 	init_reg_param(&reg_params[1], "r1", 32, PARAM_OUT);		/* buffer end */
 	init_reg_param(&reg_params[2], "r2", 32, PARAM_OUT);		/* target address */
-	init_reg_param(&reg_params[3], "r3", 32, PARAM_OUT);		/* count (word-256 bits) */
-	init_reg_param(&reg_params[4], "r4", 32, PARAM_OUT);		/* flash reg base */
+	init_reg_param(&reg_params[3], "r3", 32, PARAM_OUT);		/* count of words (word size = .block_size (bytes) */
+	init_reg_param(&reg_params[4], "r4", 32, PARAM_OUT);		/* word size in bytes */
+	init_reg_param(&reg_params[5], "r5", 32, PARAM_OUT);		/* flash reg base */
 
 	buf_set_u32(reg_params[0].value, 0, 32, source->address);
 	buf_set_u32(reg_params[1].value, 0, 32, source->address + source->size);
 	buf_set_u32(reg_params[2].value, 0, 32, address);
 	buf_set_u32(reg_params[3].value, 0, 32, count);
-	buf_set_u32(reg_params[4].value, 0, 32, stm32x_info->flash_base);
+	buf_set_u32(reg_params[4].value, 0, 32, stm32x_info->part_info->block_size);
+	buf_set_u32(reg_params[5].value, 0, 32, stm32x_info->flash_base);
 
 	retval = target_run_flash_async_algorithm(target,
 						  buffer,
 						  count,
-						  FLASH_BLOCK_SIZE,
+						  stm32x_info->part_info->block_size,
 						  0, NULL,
-						  5, reg_params,
+						  6, reg_params,
 						  source->address, source->size,
 						  write_algorithm->address, 0,
 						  &armv7m_info);
@@ -670,6 +678,7 @@ static int stm32x_write_block(struct flash_bank *bank, const uint8_t *buffer,
 	destroy_reg_param(&reg_params[2]);
 	destroy_reg_param(&reg_params[3]);
 	destroy_reg_param(&reg_params[4]);
+	destroy_reg_param(&reg_params[5]);
 	return retval;
 }
 
@@ -686,8 +695,9 @@ static int stm32x_write(struct flash_bank *bank, const uint8_t *buffer,
 		return ERROR_TARGET_NOT_HALTED;
 	}
 
-	if (offset % FLASH_BLOCK_SIZE) {
-		LOG_WARNING("offset 0x%" PRIx32 " breaks required 32-byte alignment", offset);
+	if (offset % stm32x_info->part_info->block_size) {
+		LOG_WARNING("offset 0x%" PRIx32 " breaks required %d-byte alignment",
+				stm32x_info->part_info->block_size, offset);
 		return ERROR_FLASH_DST_BREAKS_ALIGNMENT;
 	}
 
@@ -695,10 +705,10 @@ static int stm32x_write(struct flash_bank *bank, const uint8_t *buffer,
 	if (retval != ERROR_OK)
 		return retval;
 
-	uint32_t blocks_remaining = count / FLASH_BLOCK_SIZE;
-	uint32_t bytes_remaining = count % FLASH_BLOCK_SIZE;
+	uint32_t blocks_remaining = count / stm32x_info->part_info->block_size;
+	uint32_t bytes_remaining = count % stm32x_info->part_info->block_size;
 
-	/* multiple words (32-bytes) to be programmed in block */
+	/* multiple words (of .block_size) to be programmed in block */
 	if (blocks_remaining) {
 		retval = stm32x_write_block(bank, buffer, offset, blocks_remaining);
 		if (retval != ERROR_OK) {
@@ -708,8 +718,8 @@ static int stm32x_write(struct flash_bank *bank, const uint8_t *buffer,
 				LOG_WARNING("couldn't use block writes, falling back to single memory accesses");
 			}
 		} else {
-			buffer += blocks_remaining * FLASH_BLOCK_SIZE;
-			address += blocks_remaining * FLASH_BLOCK_SIZE;
+			buffer += blocks_remaining * stm32x_info->part_info->block_size;
+			address += blocks_remaining * stm32x_info->part_info->block_size;
 			blocks_remaining = 0;
 		}
 		if ((retval != ERROR_OK) && (retval != ERROR_TARGET_RESOURCE_NOT_AVAILABLE))
@@ -732,7 +742,7 @@ static int stm32x_write(struct flash_bank *bank, const uint8_t *buffer,
 		if (retval != ERROR_OK)
 			goto flash_lock;
 
-		retval = target_write_buffer(target, address, FLASH_BLOCK_SIZE, buffer);
+		retval = target_write_buffer(target, address, stm32x_info->part_info->block_size, buffer);
 		if (retval != ERROR_OK)
 			goto flash_lock;
 
@@ -740,8 +750,8 @@ static int stm32x_write(struct flash_bank *bank, const uint8_t *buffer,
 		if (retval != ERROR_OK)
 			goto flash_lock;
 
-		buffer += FLASH_BLOCK_SIZE;
-		address += FLASH_BLOCK_SIZE;
+		buffer += stm32x_info->part_info->block_size;
+		address += stm32x_info->part_info->block_size;
 		blocks_remaining--;
 	}
 
@@ -755,7 +765,7 @@ static int stm32x_write(struct flash_bank *bank, const uint8_t *buffer,
 		if (retval != ERROR_OK)
 			goto flash_lock;
 
-		/* Force Write buffer of FLASH_BLOCK_SIZE = 32 bytes */
+		/* Force Write buffer of .block_size */
 		retval = target_write_u32(target, stm32x_get_flash_reg(bank, FLASH_CR),
 				stm32x_info->part_info->compute_flash_cr(FLASH_PG | FLASH_PSIZE_64 | FLASH_FW, 0));
 		if (retval != ERROR_OK)
@@ -880,7 +890,7 @@ static int stm32x_probe(struct flash_bank *bank)
 	assert(flash_size_in_kb != 0xffff);
 
 	/* calculate numbers of pages */
-	int num_pages = flash_size_in_kb / stm32x_info->part_info->page_size;
+	int num_pages = flash_size_in_kb / stm32x_info->part_info->page_size_kb;
 
 	/* check that calculation result makes sense */
 	assert(num_pages > 0);
@@ -900,7 +910,7 @@ static int stm32x_probe(struct flash_bank *bank)
 	bank->size = 0;
 
 	/* fixed memory */
-	setup_sector(bank, 0, num_pages, stm32x_info->part_info->page_size * 1024);
+	setup_sector(bank, 0, num_pages, stm32x_info->part_info->page_size_kb * 1024);
 
 	for (i = 0; i < num_pages; i++) {
 		bank->sectors[i].is_erased = -1;
