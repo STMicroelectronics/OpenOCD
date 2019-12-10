@@ -35,7 +35,7 @@
 
 #include <target/target.h>
 
-static struct hl_interface_s hl_if = { {0, 0, { 0 }, { 0 }, 0, HL_TRANSPORT_UNKNOWN, false, -1}, 0, 0 };
+static struct hl_interface_s hl_if = { {0, 0, { 0 }, { 0 }, 0, HL_TRANSPORT_UNKNOWN, false, -1, false, 7184}, 0, 0 };
 
 int hl_interface_open(enum hl_transports tr)
 {
@@ -267,6 +267,20 @@ COMMAND_HANDLER(hl_interface_handle_layout_command)
 	return ERROR_FAIL;
 }
 
+COMMAND_HANDLER(hl_interface_handle_use_stlink_server_command)
+{
+	LOG_DEBUG("hl_interface_handle_use_stlink_server_command");
+
+	hl_if.param.use_stlink_server = true;
+
+	if (CMD_ARGC > 1)
+		LOG_ERROR("maximum expected arguments is 1");
+	else if (CMD_ARGC > 0)
+		COMMAND_PARSE_NUMBER(u16, CMD_ARGV[CMD_ARGC - 1], hl_if.param.stlink_server_port);
+
+	return ERROR_OK;
+}
+
 COMMAND_HANDLER(hl_interface_handle_vid_pid_command)
 {
 	if (CMD_ARGC > HLA_MAX_USB_IDS * 2) {
@@ -331,6 +345,13 @@ static const struct command_registration hl_interface_command_handlers[] = {
 	 .help = "set the layout of the adapter",
 	 .usage = "layout_name",
 	 },
+	{
+	 .name = "hla_use_stlink_server",
+	 .handler = &hl_interface_handle_use_stlink_server_command,
+	 .mode = COMMAND_CONFIG,
+	 .help = "use stlink-server instead of direct usb transactions",
+	 .usage = "[port]",
+	},
 	{
 	 .name = "hla_vid_pid",
 	 .handler = &hl_interface_handle_vid_pid_command,

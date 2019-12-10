@@ -2999,6 +2999,12 @@ Specifies the serial number of the adapter.
 Specifies the adapter layout to use.
 @end deffn
 
+@deffn {Config Command} {hla_use_stlink_server} [port]
+This command is available only for ST-LINK, this intructs OpenOCD to use
+stlink-server instead of direct USB connection.
+By default OpenOCD connects to localhost:7184.
+@end deffn
+
 @deffn {Config Command} {hla_vid_pid} [vid pid]+
 Pairs of vendor IDs and product IDs of the device.
 @end deffn
