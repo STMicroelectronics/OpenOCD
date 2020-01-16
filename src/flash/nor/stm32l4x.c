@@ -122,7 +122,8 @@
 
 
 /* other registers */
-#define DBGMCU_IDCODE	0xE0042000
+#define DBGMCU_IDCODE     0xE0042000
+#define DBGMCU_IDCODE_G0  0x40015800
 
 
 struct stm32l4_rev {
@@ -158,6 +159,10 @@ static const struct stm32l4_rev stm32_435_revs[] = {
 	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x2001, "Y" },
 };
 
+static const struct stm32l4_rev stm32_460_revs[] = {
+	{ 0x1000, "A" }, { 0x2000, "B" },
+};
+
 static const struct stm32l4_rev stm32_461_revs[] = {
 	{ 0x1000, "A" }, { 0x2000, "B" },
 };
@@ -168,6 +173,18 @@ static const struct stm32l4_rev stm32_462_revs[] = {
 
 static const struct stm32l4_rev stm32_464_revs[] = {
 	{ 0x1000, "A" },
+};
+
+static const struct stm32l4_rev stm32_466_revs[] = {
+	{ 0x1000, "A" },
+};
+
+static const struct stm32l4_rev stm32_468_revs[] = {
+	{ 0x1000, "A" }, { 0x2000, "B" }, { 0x2001, "Z" },
+};
+
+static const struct stm32l4_rev stm32_469_revs[] = {
+	{ 0x1000, "A" }, { 0x2000, "B" }, { 0x2001, "Z" },
 };
 
 static const struct stm32l4_rev stm32_470_revs[] = {
@@ -204,6 +221,16 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .fsize_addr            = 0x1FFF75E0,
 	},
 	{
+	  .id                    = 0x460,
+	  .revs                  = stm32_460_revs,
+	  .num_revs              = ARRAY_SIZE(stm32_460_revs),
+	  .device_str            = "STM32G07/G08xx",
+	  .max_flash_size_kb     = 128,
+	  .has_dual_bank         = false,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x1FFF75E0,
+	},
+	{
 	  .id                    = 0x461,
 	  .revs                  = stm32_461_revs,
 	  .num_revs              = ARRAY_SIZE(stm32_461_revs),
@@ -230,6 +257,36 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .device_str            = "STM32L41/L42xx",
 	  .max_flash_size_kb     = 128,
 	  .has_dual_bank         = false,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x1FFF75E0,
+	},
+	{
+	  .id                    = 0x466,
+	  .revs                  = stm32_466_revs,
+	  .num_revs              = ARRAY_SIZE(stm32_466_revs),
+	  .device_str            = "STM32G03/G04xx",
+	  .max_flash_size_kb     = 64,
+	  .has_dual_bank         = false,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x1FFF75E0,
+	},
+	{
+	  .id                    = 0x468,
+	  .revs                  = stm32_468_revs,
+	  .num_revs              = ARRAY_SIZE(stm32_468_revs),
+	  .device_str            = "STM32G43/G44xx",
+	  .max_flash_size_kb     = 128,
+	  .has_dual_bank         = false,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x1FFF75E0,
+	},
+	{
+	  .id                    = 0x469,
+	  .revs                  = stm32_469_revs,
+	  .num_revs              = ARRAY_SIZE(stm32_469_revs),
+	  .device_str            = "STM32G47/G48xx",
+	  .max_flash_size_kb     = 512,
+	  .has_dual_bank         = true,
 	  .flash_regs_base       = 0x40022000,
 	  .fsize_addr            = 0x1FFF75E0,
 	},
@@ -719,6 +776,10 @@ static int stm32l4_read_idcode(struct flash_bank *bank, uint32_t *id)
 	if (retval != ERROR_OK)
 		return retval;
 
+	/* STM32G0 parts will have 0 at this address, read the corresponding IDCODE reg */
+	if (*id == 0)
+		retval = target_read_u32(bank->target, DBGMCU_IDCODE_G0, id);
+
 	return retval;
 }
 
@@ -747,7 +808,7 @@ static int stm32l4_probe(struct flash_bank *bank)
 	}
 
 	if (!stm32l4_info->part_info) {
-		LOG_WARNING("Cannot identify target as an STM32 L4 or WB family device.");
+		LOG_WARNING("Cannot identify target as an STM32 G0, G4, L4 or WB family device.");
 		return ERROR_FAIL;
 	}
 
@@ -812,12 +873,32 @@ static int stm32l4_probe(struct flash_bank *bank)
 		}
 		break;
 	case 0x435:
+	case 0x460:
 	case 0x462:
 	case 0x464:
+	case 0x466:
+	case 0x468:
 		/* single bank flash */
 		page_size = 2048;
 		num_pages = flash_size_in_kb / 2;
 		stm32l4_info->bank1_sectors = num_pages;
+		break;
+	case 0x469:
+		/* STM32G47xx can be single/dual bank depending on DBANK bit(22)
+		 * page size is 2k in dual bank mode, 4k in single bank mode
+		 * in dual bank mode, the bank2 is always located at 0x08040000
+		 */
+		page_size = 4096;
+		num_pages = flash_size_in_kb / 4;
+		stm32l4_info->bank1_sectors = num_pages;
+		if (options & BIT(22)) {
+			stm32l4_info->dual_bank_mode = true;
+			page_size = 2048;
+			num_pages = flash_size_in_kb / 2;
+			stm32l4_info->bank1_sectors = num_pages / 2;
+			/* calculate the gap sectors: (max_flash_size - actual_size) / 2 / page_size */
+			stm32l4_info->hole_sectors = (part_info->max_flash_size_kb - flash_size_in_kb) / 4;
+		}
 		break;
 	case 0x470:
 	case 0x471:
@@ -925,7 +1006,7 @@ static int get_stm32l4_info(struct flash_bank *bank, char *buf, int buf_size)
 				part_info->device_str, rev_id);
 		return ERROR_OK;
 	} else {
-		snprintf(buf, buf_size, "Cannot identify target as an STM32 L4 or WB device");
+		snprintf(buf, buf_size, "Cannot identify target as an STM32 G0, G4, L4 or WB device");
 		return ERROR_FAIL;
 	}
 
