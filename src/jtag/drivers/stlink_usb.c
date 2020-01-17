@@ -3736,6 +3736,7 @@ static int stlink_dap_execute_queue(void)
 static int stlink_dap_init(void)
 {
 	enum reset_types jtag_reset_config = jtag_get_reset_config();
+	int retval;
 
 	LOG_DEBUG("stlink_dap_init()");
 
@@ -3745,7 +3746,17 @@ static int stlink_dap_init(void)
 		else
 			LOG_WARNING("\'srst_nogate\' reset_config option is required");
 	}
-	return stlink_open(&stlink_dap_param, (void **)&stlink_dap_handle);
+	retval = stlink_open(&stlink_dap_param, (void **)&stlink_dap_handle);
+	if (retval != ERROR_OK)
+		return retval;
+
+	/* only supported by stlink/v2 and for firmware >= 24 or stlink/v3 */
+	if (stlink_dap_handle->version.stlink == 1 ||
+		(stlink_dap_handle->version.stlink == 2 && stlink_dap_handle->version.jtag < 24)) {
+		LOG_ERROR("ST-Link version does not support DAP direct transport");
+		return ERROR_FAIL;
+	}
+	return ERROR_OK;
 }
 
 static int stlink_dap_quit(void)
