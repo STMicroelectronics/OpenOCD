@@ -2341,18 +2341,22 @@ int cortex_m_examine(struct target *target)
 		}
 
 		if (armv7m->fp_feature == FP_NONE &&
-		    armv7m->arm.core_cache->num_regs > ARMV7M_NUM_CORE_REGS_NOFP) {
+		    armv7m->arm.core_cache->num_regs > ARMV7M_FP_REGS_IDX) {
 			/* free unavailable FPU registers */
-			size_t idx;
-
-			for (idx = ARMV7M_NUM_CORE_REGS_NOFP;
-			     idx < armv7m->arm.core_cache->num_regs;
-			     idx++) {
+			for (size_t idx = ARMV7M_FP_REGS_IDX; idx < armv7m->arm.core_cache->num_regs; idx++) {
 				free(armv7m->arm.core_cache->reg_list[idx].value);
 				free(armv7m->arm.core_cache->reg_list[idx].feature);
 				free(armv7m->arm.core_cache->reg_list[idx].reg_data_type);
 			}
-			armv7m->arm.core_cache->num_regs = ARMV7M_NUM_CORE_REGS_NOFP;
+			armv7m->arm.core_cache->num_regs = ARMV7M_FP_REGS_IDX;
+		}
+
+		if (i != 23 && i != 33) {
+			/* mark ARMv8-M registers as non-existent */
+			for (size_t idx = ARMV8M_REGS_IDX; idx <= ARMV8M_REGS_END; idx++)
+				armv7m->arm.core_cache->reg_list[idx].exist = false;
+		} else {
+			/* TODO do the same with ARMv7-M only registers (basepri, faultmask ...)  */
 		}
 
 		if (!armv7m->stlink) {
