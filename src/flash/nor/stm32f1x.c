@@ -876,7 +876,7 @@ static int stm32x_probe(struct flash_bank *bank)
 	case 0x428: /* value line High density */
 		page_size = 2048;
 		stm32x_info->ppage_size = 4;
-		max_flash_size_in_kb = 128;
+		max_flash_size_in_kb = 512;
 		break;
 	case 0x430: /* xl line density (dual flash banks) */
 		page_size = 2048;
@@ -902,8 +902,6 @@ static int stm32x_probe(struct flash_bank *bank)
 		stm32x_info->default_rdp = 0x55AA;
 		break;
 	case 0x440: /* stm32f05x */
-	case 0x444: /* stm32f03x */
-	case 0x445: /* stm32f04x */
 		page_size = 1024;
 		stm32x_info->ppage_size = 4;
 		max_flash_size_in_kb = 64;
@@ -911,7 +909,23 @@ static int stm32x_probe(struct flash_bank *bank)
 		stm32x_info->option_offset = 6;
 		stm32x_info->default_rdp = 0x55AA;
 		break;
+	case 0x444: /* stm32f03x */
+	case 0x445: /* stm32f04x */
+		page_size = 1024;
+		stm32x_info->ppage_size = 4;
+		max_flash_size_in_kb = 32;
+		stm32x_info->user_data_offset = 16;
+		stm32x_info->option_offset = 6;
+		stm32x_info->default_rdp = 0x55AA;
+		break;
 	case 0x448: /* stm32f07x */
+		page_size = 2048;
+		stm32x_info->ppage_size = 4;
+		max_flash_size_in_kb = 128;
+		stm32x_info->user_data_offset = 16;
+		stm32x_info->option_offset = 6;
+		stm32x_info->default_rdp = 0x55AA;
+		break;
 	case 0x442: /* stm32f09x */
 		page_size = 2048;
 		stm32x_info->ppage_size = 4;
