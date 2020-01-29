@@ -5244,6 +5244,77 @@ flash bank $_FLASHNAME stmsmi 0xf8000000 0 0 0 $_TARGETNAME
 
 @end deffn
 
+@deffn {Flash Driver} stmqspi
+@cindex STMicroelectronics QuadSPI/OctoSPI Interface
+@cindex QuadSPI
+@cindex OctoSPI
+@cindex stmqspi
+Some devices from STMicroelectronics include a proprietary ``QuadSPI Interface''
+(e.g. STM32F4, STM32F7, STM32L4) or ``OctoSPI Interface'' (e. g. STM32L4+)
+controller able to drive one or even two (dual mode) external SPI flash devices.
+The OctoSPI is a superset of QuadSPI, it's presence is detected automatically.
+Currently only the regular command mode is supported, whereas the HyperFlash
+mode is not.
+
+QuadSPI/OctoSPI makes the flash contents directly accessible in the CPU address
+space; in case of dual mode both devices must be of the same type and are
+mapped in the same memory bank (even and odd adresses interleaved).
+CPU can directly read data, execute code (but not boot) from QuadSPI bank.
+
+The setup command only requires the @var{base} parameter and the extra
+parameter @var{io_base} in order to identify the memory bank. All other
+parameters are ignored.
+
+The controllers must be initialized after each reset, the setup is quite board
+specific (that's why booting from this memory is not possible) and the flash
+driver infers all parameters from current controller register values.
+
+Normal OpenOCD commands like @command{mdw} can be used to display
+the flash content, but only after proper controller initialization.
+
+@example
+flash bank $_FLASHNAME stmqspi 0x90000000 0 0 0 $_TARGETNAME 0xA0001000
+flash bank $_FLASHNAME stmqspi 0x70000000 0 0 0 $_TARGETNAME 0xA0001400
+@end example
+
+There are three specific commands
+@deffn Command {stmqspi mass_erase} num
+Clears the block protect bits and performs a mass erase. Works only if there
+is no chip specific write protection engaged.
+@end deffn
+
+@deffn Command {stmqspi set} bank_id name total_size page_size read_cmd fread_cmd pprg_cmd mass_erase_cmd sector_size sector_erase_cmd
+Set flash parameters: @var{name} human readable string, @var{total_size} size
+in bytes, @var{page_size} is write page size. @var{read_cmd}, @var{fread_cmd} and @var{pprg_cmd}
+are commands for reading and page programming. @var{mass_erase_cmd}, @var{sector_size}
+and @var{sector_erase_cmd} are optional.
+
+This command is required if chip id is not hardcoded yet and e. g. for EEPROMs
+which don't support an id command at all.
+
+In dual mode parameters of both chips are set identically. The parameters refer to
+a single chip, so the whole bank gets twice the specified capacity etc.
+@end deffn
+
+@deffn Command {stmqspi cmd} bank_id resp_num cmd_byte ...
+If @var{resp_num} is zero, sends command @var{cmd_byte} and following data
+bytes. In dual mode data bytes are sent *alternatingly* to chip 1 and 2, i.e.
+the number of data bytes must be even. Note that in 8-line mode, @var{cmd_byte}
+is sent twice - first time as given, second time complemented. Additionally,
+in 8-line mode only, some commands (e. g. Read Status) need a dummy address, e. g.
+@example
+stmqspi cmd bank_id 1 0x05 0x00 0x00 0x00 0x00
+@end example
+should return the status register contents.
+
+If @var{resp_num} is not zero, cmd and at most four following data bytes are
+sent, in dual mode *simultaneously* to both chips. Then @var{resp_num} bytes
+are read interleaved from both chips starting with chip 1. In this case
+@var{resp_num} must be even.
+@end deffn
+
+@end deffn
+
 @deffn {Flash Driver} mrvlqspi
 This driver supports QSPI flash controller of Marvell's Wireless
 Microcontroller platform.
