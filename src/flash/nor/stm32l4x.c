@@ -776,11 +776,11 @@ static int stm32l4_write(struct flash_bank *bank, const uint8_t *buffer,
 	/* Only full double words (8-byte) can be programmed*/
 	retval = stm32l4_write_block(bank, buffer, offset, count / 2);
 	if (retval != ERROR_OK) {
-		LOG_WARNING("block write failed");
+		LOG_ERROR("block write failed");
 		return retval;
 	}
 
-	LOG_WARNING("block write succeeded");
+	LOG_INFO("block write succeeded");
 	return stm32l4_write_flash_reg(bank, STM32_FLASH_CR, FLASH_LOCK);
 }
 
