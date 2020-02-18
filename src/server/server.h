@@ -83,6 +83,7 @@ int remove_service(const char *name, const char *port);
 int server_preinit(void);
 int server_init(struct command_context *cmd_ctx);
 int server_quit(void);
+int server_post_quit(void);
 void server_free(void);
 void exit_on_signal(int);
 

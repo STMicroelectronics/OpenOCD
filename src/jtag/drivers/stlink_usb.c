@@ -587,6 +587,12 @@ static int stlink_tcp_send_cmd(void *handle, const uint8_t *cmd, int cmd_size,
 	int sent_size = send(h->stlink_server_socket, (char *) cmd, cmd_size, 0);
 	if (sent_size != cmd_size) {
 		LOG_ERROR("failed to send USB CMD");
+
+		if (sent_size == -1)
+			LOG_ERROR("socket send error: %s (errno %d)", strerror(errno) ,errno);
+		else
+			LOG_ERROR("sent size %d (expected %d)", sent_size, cmd_size);
+
 		return ERROR_FAIL;
 	}
 
@@ -594,6 +600,12 @@ static int stlink_tcp_send_cmd(void *handle, const uint8_t *cmd, int cmd_size,
 	int received_size = recv(h->stlink_server_socket, (char *) data, data_size, 0);
 	if (received_size != data_size) {
 		LOG_ERROR("failed to receive USB CMD response");
+
+		if (received_size == -1)
+			LOG_DEBUG("socket recv error: %s (errno %d)", strerror(errno) ,errno);
+		else
+			LOG_DEBUG("received size %d (expected %d)", received_size, data_size);
+
 		return ERROR_FAIL;
 	}
 
@@ -1157,7 +1169,7 @@ static int stlink_usb_mode_leave(void *handle, enum stlink_mode type)
 
 	assert(handle != NULL);
 
-	stlink_usb_init_buffer(handle, STLINK_NULL_EP, 0);
+	stlink_usb_init_buffer(handle, h->rx_ep, 0);
 
 	switch (type) {
 		case STLINK_MODE_DEBUG_JTAG:
@@ -1178,7 +1190,7 @@ static int stlink_usb_mode_leave(void *handle, enum stlink_mode type)
 			return ERROR_FAIL;
 	}
 
-	res = stlink_xfer(handle, 0, 0);
+	res = stlink_xfer(handle, h->databuf, 0);
 
 	if (res != ERROR_OK)
 		return res;
@@ -2630,7 +2642,10 @@ static int stlink_tcp_close(void *handle)
 					LOG_ERROR("cannot close the STLINK");
 			}
 
-			close(h->stlink_server_socket);
+			if (close_socket(h->stlink_server_socket) != 0) {
+				LOG_ERROR("error closing the socket");
+				LOG_DEBUG("close error: %s (errno %d)", strerror(errno) ,errno);
+			}
 		}
 
 		free(h);
@@ -2895,7 +2910,7 @@ static int stlink_tcp_open(struct hl_interface_param_s *param, void **fd)
 	h->tx_ep = STLINK_TCP_REQUEST_WRITE;
 	h->trace_ep = STLINK_TCP_REQUEST_READ_SWO;
 
-	h->stlink_server_socket = socket(AF_INET, SOCK_STREAM, 0);
+	h->stlink_server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	h->stlink_server_connected = false;
 	h->stlink_server_device_id = 0;
 	h->stlink_server_connect_id = 0;

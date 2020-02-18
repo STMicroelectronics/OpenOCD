@@ -686,16 +686,17 @@ int server_quit(void)
 {
 	remove_services();
 	target_quit();
+	/* return signal number so we can kill ourselves */
+	return last_signal;
+}
 
+int server_post_quit(void)
+{
 #ifdef _WIN32
 	WSACleanup();
 	SetConsoleCtrlHandler(ControlHandler, FALSE);
-
-	return ERROR_OK;
 #endif
-
-	/* return signal number so we can kill ourselves */
-	return last_signal;
+	return ERROR_OK;
 }
 
 void server_free(void)

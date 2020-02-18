@@ -290,9 +290,6 @@ static int openocd_thread(int argc, char *argv[], struct command_context *cmd_ct
 	if (parse_cmdline_args(cmd_ctx, argc, argv) != ERROR_OK)
 		return ERROR_FAIL;
 
-	if (server_preinit() != ERROR_OK)
-		return ERROR_FAIL;
-
 	ret = parse_config_file(cmd_ctx);
 	if (ret == ERROR_COMMAND_CLOSE_CONNECTION) {
 		server_quit(); /* gdb server may be initialized by -c init */
@@ -350,8 +347,11 @@ int openocd_main(int argc, char *argv[])
 	command_context_mode(cmd_ctx, COMMAND_CONFIG);
 	command_set_output_handler(cmd_ctx, configuration_output_handler, NULL);
 
-	/* Start the executable meat that can evolve into thread in future. */
-	ret = openocd_thread(argc, argv, cmd_ctx);
+	ret = server_preinit();
+	if (ret == ERROR_OK) {
+		/* Start the executable meat that can evolve into thread in future. */
+		ret = openocd_thread(argc, argv, cmd_ctx);
+	}
 
 	flash_free_all_banks();
 	gdb_service_free();
@@ -364,6 +364,9 @@ int openocd_main(int argc, char *argv[])
 	arm_cti_cleanup_all();
 
 	adapter_quit();
+
+	/* wall WSACleanup for WIN32 */
+	server_post_quit();
 
 	/* Shutdown commandline interface */
 	command_exit(cmd_ctx);
