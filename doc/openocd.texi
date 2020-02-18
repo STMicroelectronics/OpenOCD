@@ -37,13 +37,6 @@ Documentation License''.
 @end copying
 
 @titlepage
-@titlefont{@emph{Open On-Chip Debugger:}}
-@sp 1
-@title OpenOCD User's Guide
-@subtitle for release @value{VERSION}
-@subtitle @value{UPDATED}
-
-@page
 @vskip 0pt plus 1filll
 @insertcopying
 @end titlepage
