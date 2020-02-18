@@ -2436,7 +2436,7 @@ static int stlink_match_speed_map(const struct speed_map *map, unsigned int map_
 
 	if (!match && query) {
 		LOG_INFO("Unable to match requested speed %d kHz, using %d kHz", \
-				khz, stlink_khz_to_speed_map[speed_index].speed);
+				khz, map[speed_index].speed);
 	}
 
 	return speed_index;
@@ -3662,7 +3662,7 @@ static int stlink_dap_speed_div(int speed, int *khz)
 
 static int stlink_dap_khz(int khz, int *jtag_speed)
 {
-	*jtag_speed = khz;
+	*jtag_speed = stlink_speed(stlink_dap_handle, khz, true);
 	return ERROR_OK;
 }
 
