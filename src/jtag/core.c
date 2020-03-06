@@ -2026,7 +2026,8 @@ int adapter_resets(int trst, int srst)
 		 */
 		jtag_execute_queue();
 		return ERROR_OK;
-	} else if (transport_is_swd() || transport_is_hla()) {
+	} else if (transport_is_swd() || transport_is_hla() ||
+			   transport_is_dapdirect_swd() || transport_is_dapdirect_jtag()) {
 		if (trst == TRST_ASSERT) {
 			LOG_ERROR("transport %s has no trst signal",
 				get_current_transport()->name);
