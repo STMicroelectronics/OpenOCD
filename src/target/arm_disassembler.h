@@ -26,7 +26,9 @@ enum arm_instruction_type {
 	ARM_B,
 	ARM_BL,
 	ARM_BX,
+	ARM_BXNS,
 	ARM_BLX,
+	ARM_BLXNS,
 
 	/* Data processing instructions */
 	ARM_AND,
@@ -119,6 +121,13 @@ enum arm_instruction_type {
 	ARM_SMULWy,
 	ARM_LDRD,
 	ARM_STRD,
+
+	/* Secure instructions */
+	ARM_SG,
+	ARM_TT,
+	ARM_TTT,
+	ARM_TTA,
+	ARM_TTAT,
 
 	ARM_UNDEFINED_INSTRUCTION = 0xffffffff,
 };
