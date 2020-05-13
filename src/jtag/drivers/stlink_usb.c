@@ -1,4 +1,7 @@
 /***************************************************************************
+ *   Copyright (C) 2020 by Tarek Bochkati                                  *
+ *   Tarek Bochkati <tarek.bouchkati@gmail.com>                            *
+ *                                                                         *
  *   SWIM contributions by Ake Rehnman                                     *
  *   Copyright (C) 2017  Ake Rehnman                                       *
  *   ake.rehnman(at)gmail.com                                              *
@@ -120,12 +123,30 @@ struct stlink_usb_version {
 	uint32_t flags;
 };
 
-/** */
-struct stlink_usb_handle_s {
+struct stlink_usb_priv_s {
 	/** */
 	struct libusb_device_handle *fd;
 	/** */
 	struct libusb_transfer *trans;
+};
+
+struct stlink_interface_s {
+	/** */
+	void *priv;
+	/** */
+	int (*open)(void *handle, struct hl_interface_param_s *param);
+	/** */
+	int (*close)(void *handle);
+	/** */
+	int (*xfer)(void *handle, const uint8_t *buf, int size);
+	/** */
+	int (*read)(void *handle, const uint8_t *buf, int size);
+};
+
+/** */
+struct stlink_usb_handle_s {
+	/** */
+	struct stlink_interface_s *itf;
 	/** */
 	uint8_t rx_ep;
 	/** */
@@ -550,6 +571,7 @@ static int jtag_libusb_bulk_transfer_n(
 static int stlink_usb_xfer_v1_get_status(void *handle)
 {
 	struct stlink_usb_handle_s *h = handle;
+	struct stlink_usb_priv_s *usb_priv = h->itf->priv;
 	int tr, ret;
 
 	assert(handle != NULL);
@@ -557,7 +579,7 @@ static int stlink_usb_xfer_v1_get_status(void *handle)
 	/* read status */
 	memset(h->cmdbuf, 0, STLINK_SG_SIZE);
 
-	ret = jtag_libusb_bulk_read(h->fd, h->rx_ep, (char *)h->cmdbuf, 13,
+	ret = jtag_libusb_bulk_read(usb_priv->fd, h->rx_ep, (char *)h->cmdbuf, 13,
 				    STLINK_READ_TIMEOUT, &tr);
 	if (ret || tr != 13)
 		return ERROR_FAIL;
@@ -585,6 +607,7 @@ static int stlink_usb_xfer_v1_get_status(void *handle)
 static int stlink_usb_xfer_rw(void *handle, int cmdsize, const uint8_t *buf, int size)
 {
 	struct stlink_usb_handle_s *h = handle;
+	struct stlink_usb_priv_s *usb_priv = h->itf->priv;
 
 	assert(handle != NULL);
 
@@ -614,7 +637,7 @@ static int stlink_usb_xfer_rw(void *handle, int cmdsize, const uint8_t *buf, int
 	}
 
 	return jtag_libusb_bulk_transfer_n(
-			h->fd,
+			usb_priv->fd,
 			transfers,
 			n_transfers,
 			STLINK_WRITE_TIMEOUT);
@@ -623,24 +646,25 @@ static int stlink_usb_xfer_rw(void *handle, int cmdsize, const uint8_t *buf, int
 static int stlink_usb_xfer_rw(void *handle, int cmdsize, const uint8_t *buf, int size)
 {
 	struct stlink_usb_handle_s *h = handle;
+	struct stlink_usb_priv_s *usb_priv = h->itf->priv;
 	int tr, ret;
 
 	assert(handle != NULL);
 
-	ret = jtag_libusb_bulk_write(h->fd, h->tx_ep, (char *)h->cmdbuf,
+	ret = jtag_libusb_bulk_write(usb_priv->fd, h->tx_ep, (char *)h->cmdbuf,
 				     cmdsize, STLINK_WRITE_TIMEOUT, &tr);
 	if (ret || tr != cmdsize)
 		return ERROR_FAIL;
 
 	if (h->direction == h->tx_ep && size) {
-		ret = jtag_libusb_bulk_write(h->fd, h->tx_ep, (char *)buf,
+		ret = jtag_libusb_bulk_write(usb_priv->fd, h->tx_ep, (char *)buf,
 					     size, STLINK_WRITE_TIMEOUT, &tr);
 		if (ret || tr != size) {
 			LOG_DEBUG("bulk write failed");
 			return ERROR_FAIL;
 		}
 	} else if (h->direction == h->rx_ep && size) {
-		ret = jtag_libusb_bulk_read(h->fd, h->rx_ep, (char *)buf,
+		ret = jtag_libusb_bulk_read(usb_priv->fd, h->rx_ep, (char *)buf,
 					    size, STLINK_READ_TIMEOUT, &tr);
 		if (ret || tr != size) {
 			LOG_DEBUG("bulk read failed");
@@ -675,6 +699,23 @@ static int stlink_usb_xfer_v1_get_sense(void *handle)
 
 	if (stlink_usb_xfer_v1_get_status(handle) != ERROR_OK)
 		return ERROR_FAIL;
+
+	return ERROR_OK;
+}
+
+/** */
+static int stlink_usb_bulk_read(void *handle, const uint8_t *buf, int size)
+{
+	struct stlink_usb_handle_s *h = handle;
+	struct stlink_usb_priv_s *usb_priv = h->itf->priv;
+	int tr, ret;
+
+	ret = jtag_libusb_bulk_read(usb_priv->fd, h->direction, (char *)buf, size,
+				    STLINK_READ_TIMEOUT, &tr);
+	if (ret || tr != size) {
+		LOG_ERROR("bulk trace read failed");
+		return ERROR_FAIL;
+	}
 
 	return ERROR_OK;
 }
@@ -812,11 +853,12 @@ static int stlink_usb_error_check(void *handle)
  */
 static int stlink_usb_xfer_errcheck(void *handle, const uint8_t *buf, int size)
 {
+	struct stlink_usb_handle_s *h = handle;
 	int retval;
 
 	assert(size > 0);
 
-	retval = stlink_usb_xfer_noerrcheck(handle, buf, size);
+	retval = h->itf->xfer(handle, buf, size);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -838,7 +880,7 @@ static int stlink_cmd_allow_retry(void *handle, const uint8_t *buf, int size)
 
 	while (1) {
 		if ((h->transport != HL_TRANSPORT_SWIM) || !retries) {
-			res = stlink_usb_xfer_noerrcheck(handle, buf, size);
+			res = h->itf->xfer(handle, buf, size);
 			if (res != ERROR_OK)
 				return res;
 		}
@@ -864,20 +906,13 @@ static int stlink_cmd_allow_retry(void *handle, const uint8_t *buf, int size)
 static int stlink_usb_read_trace(void *handle, const uint8_t *buf, int size)
 {
 	struct stlink_usb_handle_s *h = handle;
-	int tr, ret;
 
 	assert(handle != NULL);
 
 	assert(h->version.flags & STLINK_F_HAS_TRACE);
 
-	ret = jtag_libusb_bulk_read(h->fd, h->trace_ep, (char *)buf, size,
-				    STLINK_READ_TIMEOUT, &tr);
-	if (ret || tr != size) {
-		LOG_ERROR("bulk trace read failed");
-		return ERROR_FAIL;
-	}
-
-	return ERROR_OK;
+	stlink_usb_init_buffer(h, h->trace_ep, 0);
+	return h->itf->read(handle, buf, size);
 }
 
 /*
@@ -944,7 +979,7 @@ static int stlink_usb_version(void *handle)
 
 	h->cmdbuf[h->cmdidx++] = STLINK_GET_VERSION;
 
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 6);
+	res = h->itf->xfer(handle, h->databuf, 6);
 
 	if (res != ERROR_OK)
 		return res;
@@ -985,7 +1020,7 @@ static int stlink_usb_version(void *handle)
 
 		h->cmdbuf[h->cmdidx++] = STLINK_APIV3_GET_VERSION_EX;
 
-		res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 12);
+		res = h->itf->xfer(handle, h->databuf, 12);
 		if (res != ERROR_OK)
 			return res;
 
@@ -1128,7 +1163,7 @@ static int stlink_usb_check_voltage(void *handle, float *target_voltage)
 
 	h->cmdbuf[h->cmdidx++] = STLINK_GET_TARGET_VOLTAGE;
 
-	int result = stlink_usb_xfer_noerrcheck(handle, h->databuf, 8);
+	int result = h->itf->xfer(handle, h->databuf, 8);
 
 	if (result != ERROR_OK)
 		return result;
@@ -1207,7 +1242,7 @@ static int stlink_usb_current_mode(void *handle, uint8_t *mode)
 
 	h->cmdbuf[h->cmdidx++] = STLINK_GET_CURRENT_MODE;
 
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 2);
+	res = h->itf->xfer(handle, h->databuf, 2);
 
 	if (res != ERROR_OK)
 		return res;
@@ -1255,7 +1290,7 @@ static int stlink_usb_mode_enter(void *handle, enum stlink_mode type)
 			h->cmdbuf[h->cmdidx++] = STLINK_SWIM_COMMAND;
 			h->cmdbuf[h->cmdidx++] = STLINK_SWIM_ENTER;
 			/* swim enter does not return any response or status */
-			return stlink_usb_xfer_noerrcheck(handle, h->databuf, 0);
+			return h->itf->xfer(handle, h->databuf, 0);
 		case STLINK_MODE_DFU:
 		case STLINK_MODE_MASS:
 		default:
@@ -1295,7 +1330,7 @@ static int stlink_usb_mode_leave(void *handle, enum stlink_mode type)
 			return ERROR_FAIL;
 	}
 
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 0);
+	res = h->itf->xfer(handle, h->databuf, 0);
 
 	if (res != ERROR_OK)
 		return res;
@@ -1463,7 +1498,7 @@ static int stlink_swim_status(void *handle)
 	h->cmdbuf[h->cmdidx++] = STLINK_SWIM_COMMAND;
 	h->cmdbuf[h->cmdidx++] = STLINK_SWIM_READSTATUS;
 	/* error is checked by the caller */
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 4);
+	res = h->itf->xfer(handle, h->databuf, 4);
 	if (res != ERROR_OK)
 		return res;
 	return ERROR_OK;
@@ -1483,7 +1518,7 @@ static int stlink_swim_cap(void *handle, uint8_t *cap)
 	h->cmdbuf[h->cmdidx++] = STLINK_SWIM_COMMAND;
 	h->cmdbuf[h->cmdidx++] = STLINK_SWIM_READ_CAP;
 	h->cmdbuf[h->cmdidx++] = 0x01;
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 8);
+	res = h->itf->xfer(handle, h->databuf, 8);
 	if (res != ERROR_OK)
 		return res;
 	memcpy(cap, h->databuf, 8);
@@ -1640,7 +1675,7 @@ static int stlink_swim_readbytes(void *handle, uint32_t addr, uint32_t len, uint
 	stlink_usb_init_buffer(handle, h->rx_ep, len);
 	h->cmdbuf[h->cmdidx++] = STLINK_SWIM_COMMAND;
 	h->cmdbuf[h->cmdidx++] = STLINK_SWIM_READBUF;
-	res = stlink_usb_xfer_noerrcheck(handle, data, len);
+	res = h->itf->xfer(handle, data, len);
 	if (res != ERROR_OK)
 		return res;
 
@@ -1667,7 +1702,7 @@ static int stlink_usb_idcode(void *handle, uint32_t *idcode)
 	if (h->version.jtag_api == STLINK_JTAG_API_V1) {
 		h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_READCOREID;
 
-		res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 4);
+		res = h->itf->xfer(handle, h->databuf, 4);
 		offset = 0;
 	} else {
 		h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV2_READ_IDCODES;
@@ -1744,7 +1779,7 @@ static int stlink_usb_trace_read(void *handle, uint8_t *buf, size_t *size)
 		h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
 		h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV2_GET_TRACE_NB;
 
-		res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 2);
+		res = h->itf->xfer(handle, h->databuf, 2);
 		if (res != ERROR_OK)
 			return res;
 
@@ -1821,7 +1856,7 @@ static enum target_state stlink_usb_state(void *handle)
 	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
 	h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_GETSTATUS;
 
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 2);
+	res = h->itf->xfer(handle, h->databuf, 2);
 
 	if (res != ERROR_OK)
 		return TARGET_UNKNOWN;
@@ -2024,7 +2059,7 @@ static int stlink_usb_read_regs(void *handle)
 	if (h->version.jtag_api == STLINK_JTAG_API_V1) {
 
 		h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV1_READALLREGS;
-		res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 84);
+		res = h->itf->xfer(handle, h->databuf, 84);
 		/* regs data from offset 0 */
 	} else {
 		h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV2_READALLREGS;
@@ -2053,7 +2088,7 @@ static int stlink_usb_read_reg(void *handle, int num, uint32_t *val)
 	h->cmdbuf[h->cmdidx++] = num;
 
 	if (h->version.jtag_api == STLINK_JTAG_API_V1) {
-		res = stlink_usb_xfer_noerrcheck(handle, h->databuf, 4);
+		res = h->itf->xfer(handle, h->databuf, 4);
 		if (res != ERROR_OK)
 			return res;
 		*val = le_to_h_u32(h->databuf);
@@ -2141,7 +2176,7 @@ static int stlink_usb_read_mem8(void *handle, uint8_t ap_num, uint32_t csw,
 	if (read_len == 1)
 		read_len++;
 
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, read_len);
+	res = h->itf->xfer(handle, h->databuf, read_len);
 
 	if (res != ERROR_OK)
 		return res;
@@ -2178,7 +2213,7 @@ static int stlink_usb_write_mem8(void *handle, uint8_t ap_num, uint32_t csw,
 	h_u24_to_le(h->cmdbuf+h->cmdidx, csw >> 8);
 	h->cmdidx += 3;
 
-	res = stlink_usb_xfer_noerrcheck(handle, buffer, len);
+	res = h->itf->xfer(handle, buffer, len);
 
 	if (res != ERROR_OK)
 		return res;
@@ -2216,7 +2251,7 @@ static int stlink_usb_read_mem16(void *handle, uint8_t ap_num, uint32_t csw,
 	h_u24_to_le(h->cmdbuf+h->cmdidx, csw >> 8);
 	h->cmdidx += 3;
 
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, len);
+	res = h->itf->xfer(handle, h->databuf, len);
 
 	if (res != ERROR_OK)
 		return res;
@@ -2256,7 +2291,7 @@ static int stlink_usb_write_mem16(void *handle, uint8_t ap_num, uint32_t csw,
 	h_u24_to_le(h->cmdbuf+h->cmdidx, csw >> 8);
 	h->cmdidx += 3;
 
-	res = stlink_usb_xfer_noerrcheck(handle, buffer, len);
+	res = h->itf->xfer(handle, buffer, len);
 
 	if (res != ERROR_OK)
 		return res;
@@ -2291,7 +2326,7 @@ static int stlink_usb_read_mem32(void *handle, uint8_t ap_num, uint32_t csw,
 	h_u24_to_le(h->cmdbuf+h->cmdidx, csw >> 8);
 	h->cmdidx += 3;
 
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, len);
+	res = h->itf->xfer(handle, h->databuf, len);
 
 	if (res != ERROR_OK)
 		return res;
@@ -2328,7 +2363,7 @@ static int stlink_usb_write_mem32(void *handle, uint8_t ap_num, uint32_t csw,
 	h_u24_to_le(h->cmdbuf+h->cmdidx, csw >> 8);
 	h->cmdidx += 3;
 
-	res = stlink_usb_xfer_noerrcheck(handle, buffer, len);
+	res = h->itf->xfer(handle, buffer, len);
 
 	if (res != ERROR_OK)
 		return res;
@@ -2365,7 +2400,7 @@ static int stlink_usb_read_mem32_noaddrinc(void *handle, uint8_t ap_num, uint32_
 	h_u24_to_le(h->cmdbuf+h->cmdidx, csw >> 8);
 	h->cmdidx += 3;
 
-	res = stlink_usb_xfer_noerrcheck(handle, h->databuf, len);
+	res = h->itf->xfer(handle, h->databuf, len);
 	if (res != ERROR_OK)
 		return res;
 
@@ -2403,7 +2438,7 @@ static int stlink_usb_write_mem32_noaddrinc(void *handle, uint8_t ap_num, uint32
 	h_u24_to_le(h->cmdbuf+h->cmdidx, csw >> 8);
 	h->cmdidx += 3;
 
-	res = stlink_usb_xfer_noerrcheck(handle, buffer, len);
+	res = h->itf->xfer(handle, buffer, len);
 	if (res != ERROR_OK)
 		return res;
 
@@ -2833,8 +2868,9 @@ static int stlink_usb_close(void *handle)
 	uint8_t mode;
 	enum stlink_mode emode;
 	struct stlink_usb_handle_s *h = handle;
+	struct stlink_usb_priv_s *usb_priv = h->itf->priv;
 
-	if (h && h->fd)
+	if (h && usb_priv->fd)
 		res = stlink_usb_current_mode(handle, &mode);
 	else
 		res = ERROR_FAIL;
@@ -2866,10 +2902,23 @@ static int stlink_usb_close(void *handle)
 			us from closing jtag_libusb */
 	}
 
-	if (h && h->fd)
-		jtag_libusb_close(h->fd);
+	if (h && usb_priv->fd)
+		jtag_libusb_close(usb_priv->fd);
 
-	free(h);
+	return ERROR_OK;
+}
+
+/** */
+static int stlink_close(void *handle)
+{
+	if (handle != NULL) {
+		struct stlink_usb_handle_s *h = handle;
+
+		h->itf->close(handle);
+
+		free(h->itf->priv);
+		free(h);
+	}
 
 	return ERROR_OK;
 }
@@ -2954,27 +3003,11 @@ char *stlink_usb_get_alternate_serial(libusb_device_handle *device,
 }
 
 /** */
-static int stlink_usb_open(struct hl_interface_param_s *param, void **fd)
+static int stlink_usb_open(void *handle, struct hl_interface_param_s *param)
 {
 	int err, retry_count = 1;
-	struct stlink_usb_handle_s *h;
-
-	LOG_DEBUG("stlink_usb_open");
-
-	h = calloc(1, sizeof(struct stlink_usb_handle_s));
-
-	if (h == 0) {
-		LOG_DEBUG("malloc failed");
-		return ERROR_FAIL;
-	}
-
-	h->transport = param->transport;
-
-	for (unsigned i = 0; param->vid[i]; i++) {
-		LOG_DEBUG("transport: %d vid: 0x%04x pid: 0x%04x serial: %s",
-			  param->transport, param->vid[i], param->pid[i],
-			  param->serial ? param->serial : "");
-	}
+	struct stlink_usb_handle_s *h = handle;
+	struct stlink_usb_priv_s *usb_priv = h->itf->priv;
 
 	/*
 	  On certain host USB configurations(e.g. MacBook Air)
@@ -2987,25 +3020,25 @@ static int stlink_usb_open(struct hl_interface_param_s *param, void **fd)
 	 */
 	do {
 		if (jtag_libusb_open(param->vid, param->pid, param->serial,
-				&h->fd, stlink_usb_get_alternate_serial) != ERROR_OK) {
+				&usb_priv->fd, stlink_usb_get_alternate_serial) != ERROR_OK) {
 			LOG_ERROR("open failed");
-			goto error_open;
+			return ERROR_FAIL;
 		}
 
-		jtag_libusb_set_configuration(h->fd, 0);
+		jtag_libusb_set_configuration(usb_priv->fd, 0);
 
-		if (libusb_claim_interface(h->fd, 0) != ERROR_OK) {
+		if (libusb_claim_interface(usb_priv->fd, 0) != ERROR_OK) {
 			LOG_DEBUG("claim interface failed");
-			goto error_open;
+			return ERROR_FAIL;
 		}
 
 		/* RX EP is common for all versions */
 		h->rx_ep = STLINK_RX_EP;
 
 		uint16_t pid;
-		if (jtag_libusb_get_pid(libusb_get_device(h->fd), &pid) != ERROR_OK) {
+		if (jtag_libusb_get_pid(libusb_get_device(usb_priv->fd), &pid) != ERROR_OK) {
 			LOG_DEBUG("libusb_get_pid failed");
-			goto error_open;
+			return ERROR_FAIL;
 		}
 
 		/* wrap version for first read */
@@ -3045,21 +3078,21 @@ static int stlink_usb_open(struct hl_interface_param_s *param, void **fd)
 		} else if (h->version.stlink == 1 ||
 			   retry_count == 0) {
 			LOG_ERROR("read version failed");
-			goto error_open;
+			return ERROR_FAIL;
 		} else {
-			err = libusb_release_interface(h->fd, 0);
+			err = libusb_release_interface(usb_priv->fd, 0);
 			if (err != ERROR_OK) {
 				LOG_ERROR("release interface failed");
-				goto error_open;
+				return ERROR_FAIL;
 			}
 
-			err = libusb_reset_device(h->fd);
+			err = libusb_reset_device(usb_priv->fd);
 			if (err != ERROR_OK) {
 				LOG_ERROR("reset device failed");
-				goto error_open;
+				return ERROR_FAIL;
 			}
 
-			jtag_libusb_close(h->fd);
+			jtag_libusb_close(usb_priv->fd);
 			/*
 			  Give the device one second to settle down and
 			  reenumerate.
@@ -3069,8 +3102,46 @@ static int stlink_usb_open(struct hl_interface_param_s *param, void **fd)
 		}
 	} while (1);
 
+	return ERROR_OK;
+}
+
+static struct stlink_interface_s stlink_usb_itf = {
+	.open = stlink_usb_open,
+	.close = stlink_usb_close,
+	.xfer = stlink_usb_xfer_noerrcheck,
+	.read = stlink_usb_bulk_read,
+};
+
+/** */
+static int stlink_open(struct hl_interface_param_s *param, void **fd)
+{
+	struct stlink_usb_handle_s *h;
+
+	LOG_DEBUG("stlink_open");
+
+	h = calloc(1, sizeof(struct stlink_usb_handle_s));
+
+	if (h == 0) {
+		LOG_DEBUG("malloc failed");
+		return ERROR_FAIL;
+	}
+
+	h->transport = param->transport;
+
+	for (unsigned i = 0; param->vid[i]; i++) {
+		LOG_DEBUG("transport: %d vid: 0x%04x pid: 0x%04x serial: %s",
+			  param->transport, param->vid[i], param->pid[i],
+			  param->serial ? param->serial : "");
+	}
+
+	h->itf = &stlink_usb_itf;
+	h->itf->priv = calloc(1, sizeof(struct stlink_usb_priv_s));
+
+	if (h->itf->priv == NULL || h->itf->open(h, param) != ERROR_OK)
+		goto error_open;
+
 	/* check if mode is supported */
-	err = ERROR_OK;
+	int err = ERROR_OK;
 
 	switch (h->transport) {
 		case HL_TRANSPORT_SWD:
@@ -3136,7 +3207,7 @@ static int stlink_usb_open(struct hl_interface_param_s *param, void **fd)
 	return ERROR_OK;
 
 error_open:
-	stlink_usb_close(h);
+	stlink_close(h);
 
 	return ERROR_FAIL;
 }
@@ -3274,9 +3345,9 @@ static int stlink_write_dap_register(void *handle, unsigned short dap_port,
 /** */
 struct hl_layout_api_s stlink_usb_layout_api = {
 	/** */
-	.open = stlink_usb_open,
+	.open = stlink_open,
 	/** */
-	.close = stlink_usb_close,
+	.close = stlink_close,
 	/** */
 	.idcode = stlink_usb_idcode,
 	/** */
@@ -4028,7 +4099,7 @@ static int stlink_dap_init(void)
 		return ERROR_FAIL;
 	}
 
-	retval = stlink_usb_open(&stlink_dap_param, (void **)&stlink_dap_handle);
+	retval = stlink_open(&stlink_dap_param, (void **)&stlink_dap_handle);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -4047,7 +4118,7 @@ static int stlink_dap_quit(void)
 	free((void *)stlink_dap_param.serial);
 	stlink_dap_param.serial = NULL;
 
-	return stlink_usb_close(stlink_dap_handle);
+	return stlink_close(stlink_dap_handle);
 }
 
 /** */
