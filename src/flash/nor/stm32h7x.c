@@ -821,6 +821,8 @@ static int stm32x_probe(struct flash_bank *bank)
 			/* flash size is 2M or 1M */
 			flash_size_in_kb /= 2;
 		break;
+	case 0x483:
+		break;
 	default:
 		LOG_ERROR("unsupported device");
 		return ERROR_FAIL;
