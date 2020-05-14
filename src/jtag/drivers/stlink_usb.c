@@ -381,7 +381,7 @@ enum stlink_mode {
 #define STLINK_TCP_SS_SIZE                   4
 #define STLINK_TCP_USB_CMD_SIZE              32
 #define STLINK_TCP_SERIAL_SIZE               32
-#define STLINK_TCP_SEND_BUFFER_SIZE          2048
+#define STLINK_TCP_SEND_BUFFER_SIZE          10240
 #define STLINK_TCP_RECV_BUFFER_SIZE          10240
 
 /* STLINK TCP command status */
