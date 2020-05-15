@@ -3456,6 +3456,8 @@ static int stlink_server_open(void *handle, struct hl_interface_param_s *param)
 	if (ret != ERROR_OK)
 		return ERROR_FAIL;
 
+	h->max_mem_packet = (1 << 10);
+
 	return ERROR_OK;
 }
 
@@ -3551,18 +3553,20 @@ static int stlink_open(struct hl_interface_param_s *param, void **fd)
 		return ERROR_OK;
 	}
 
-	/* get cpuid, so we can determine the max page size
-	 * start with a safe default */
-	h->max_mem_packet = (1 << 10);
+	if (h->max_mem_packet == 0 ) {
+		/* get cpuid, so we can determine the max page size
+		 * start with a safe default */
+		h->max_mem_packet = (1 << 10);
 
-	uint8_t buffer[4];
-	err = stlink_usb_read_mem32(h, STLINK_HLA_AP_NUM, STLINK_HLA_CSW, CPUID, 4, buffer);
-	if (err == ERROR_OK) {
-		uint32_t cpuid = le_to_h_u32(buffer);
-		int i = (cpuid >> 4) & 0xf;
-		if (i == 4 || i == 3) {
-			/* Cortex-M3/M4 has 4096 bytes autoincrement range */
-			h->max_mem_packet = (1 << 12);
+		uint8_t buffer[4];
+		err = stlink_usb_read_mem32(h, STLINK_HLA_AP_NUM, STLINK_HLA_CSW, CPUID, 4, buffer);
+		if (err == ERROR_OK) {
+			uint32_t cpuid = le_to_h_u32(buffer);
+			int i = (cpuid >> 4) & 0xf;
+			if (i == 4 || i == 3) {
+				/* Cortex-M3/M4 has 4096 bytes autoincrement range */
+				h->max_mem_packet = (1 << 12);
+			}
 		}
 	}
 
