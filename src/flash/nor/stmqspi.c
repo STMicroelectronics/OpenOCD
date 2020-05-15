@@ -439,7 +439,7 @@ static int qspi_write_enable(struct flash_bank *bank)
 	if (((stmqspi_info->saved_cr & ((1U<<SPI_DUAL_FLASH) | (1U<<SPI_FSEL_FLASH)))
 		!= (1U<<SPI_FSEL_FLASH)))
 		if ((status & (SPIFLASH_WE_BIT | SPIFLASH_BSY_BIT)) != SPIFLASH_WE_BIT) {
-			LOG_ERROR("Cannot write enable flash1. Status=0x%02" PRIx8,
+			LOG_ERROR("Cannot write enable flash1. Status=0x%02x",
 				status & 0xFF);
 			return ERROR_FLASH_OPERATION_FAILED;
 		}
@@ -449,7 +449,7 @@ static int qspi_write_enable(struct flash_bank *bank)
 	if (((stmqspi_info->saved_cr & ((1U<<SPI_DUAL_FLASH) | (1U<<SPI_FSEL_FLASH)))
 		!= (0U<<SPI_FSEL_FLASH)))
 		if ((status & (SPIFLASH_WE_BIT | SPIFLASH_BSY_BIT)) != SPIFLASH_WE_BIT) {
-			LOG_ERROR("Cannot write enable flash2. Status=0x%02" PRIx8,
+			LOG_ERROR("Cannot write enable flash2. Status=0x%02x",
 				status & 0xFF);
 			return ERROR_FLASH_OPERATION_FAILED;
 		}
@@ -532,7 +532,7 @@ COMMAND_HANDLER(stmqspi_handle_mass_erase_command)
 	if (((stmqspi_info->saved_cr & ((1U<<SPI_DUAL_FLASH) | (1U<<SPI_FSEL_FLASH)))
 		!= (1U<<SPI_FSEL_FLASH)) && ((status & SPIFLASH_BSY_BIT) == 0) &&
 		((status & SPIFLASH_WE_BIT) != 0)) {
-		LOG_ERROR("Mass erase command not accepted by flash1. Status=0x%02" PRIx8,
+		LOG_ERROR("Mass erase command not accepted by flash1. Status=0x%02x",
 			status & 0xFF);
 		retval = ERROR_FLASH_OPERATION_FAILED;
 		goto err;
@@ -543,7 +543,7 @@ COMMAND_HANDLER(stmqspi_handle_mass_erase_command)
 	if (((stmqspi_info->saved_cr & ((1U<<SPI_DUAL_FLASH) | (1U<<SPI_FSEL_FLASH)))
 		!= (0U<<SPI_FSEL_FLASH)) && ((status & SPIFLASH_BSY_BIT) == 0) &&
 		((status & SPIFLASH_WE_BIT) != 0)) {
-		LOG_ERROR("Mass erase command not accepted by flash2. Status=0x%02" PRIx8,
+		LOG_ERROR("Mass erase command not accepted by flash2. Status=0x%02x",
 			status & 0xFF);
 		retval = ERROR_FLASH_OPERATION_FAILED;
 		goto err;
@@ -942,7 +942,7 @@ static int qspi_erase_sector(struct flash_bank *bank, int sector)
 	if (((stmqspi_info->saved_cr & ((1U<<SPI_DUAL_FLASH) | (1U<<SPI_FSEL_FLASH)))
 		!= (1U<<SPI_FSEL_FLASH)) && ((status & SPIFLASH_BSY_BIT) == 0) &&
 		((status & SPIFLASH_WE_BIT) != 0)) {
-		LOG_ERROR("Sector erase command not accepted by flash1. Status=0x%02" PRIx8,
+		LOG_ERROR("Sector erase command not accepted by flash1. Status=0x%02x",
 			status & 0xFF);
 		retval = ERROR_FLASH_OPERATION_FAILED;
 		goto err;
@@ -954,7 +954,7 @@ static int qspi_erase_sector(struct flash_bank *bank, int sector)
 	if (((stmqspi_info->saved_cr & ((1U<<SPI_DUAL_FLASH) | (1U<<SPI_FSEL_FLASH)))
 		!= (0U<<SPI_FSEL_FLASH)) && ((status & SPIFLASH_BSY_BIT) == 0) &&
 		((status & SPIFLASH_WE_BIT) != 0)) {
-		LOG_ERROR("Sector erase command not accepted by flash2. Status=0x%02" PRIx8,
+		LOG_ERROR("Sector erase command not accepted by flash2. Status=0x%02x",
 			status & 0xFF);
 		retval = ERROR_FLASH_OPERATION_FAILED;
 		goto err;
