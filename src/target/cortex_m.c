@@ -481,6 +481,7 @@ static int cortex_m_debug_entry(struct target *target)
 {
 	int i;
 	uint32_t xPSR;
+	uint32_t dscsr;
 	int retval;
 	struct cortex_m_common *cortex_m = target_to_cm(target);
 	struct armv7m_common *armv7m = &cortex_m->armv7m;
@@ -499,6 +500,11 @@ static int cortex_m_debug_entry(struct target *target)
 		return retval;
 
 	retval = armv7m->examine_debug_reason(target);
+	if (retval != ERROR_OK)
+		return retval;
+
+	/* read cpu state */
+	retval = mem_ap_read_u32(armv7m->debug_ap, DCB_DSCSR, &dscsr);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -548,9 +554,10 @@ static int cortex_m_debug_entry(struct target *target)
 	if (armv7m->exception_number)
 		cortex_m_examine_exception_reason(target);
 
-	LOG_DEBUG("entered debug state in core mode: %s at PC 0x%" PRIx32 ", target->state: %s",
+	LOG_DEBUG("entered debug state in core mode: %s at PC 0x%" PRIx32 ", cpu %s, target->state: %s",
 		arm_mode_name(arm->core_mode),
 		buf_get_u32(arm->pc->value, 0, 32),
+		(dscsr & DSCSR_CDS == DSCSR_CDS) ? "in Secure state" : "in Non-Secure state",
 		target_state_name(target));
 
 	if (armv7m->post_debug_entry) {
