@@ -196,12 +196,14 @@ static int dapdirect_init(struct command_context *ctx)
 
 static struct transport dapdirect_jtag_transport = {
 	.name = "dapdirect_jtag",
+	.deprecated_name = "stlink_jtag",
 	.select = dapdirect_jtag_select,
 	.init = dapdirect_init,
 };
 
 static struct transport dapdirect_swd_transport = {
 	.name = "dapdirect_swd",
+	.deprecated_name = "stlink_swd",
 	.select = dapdirect_swd_select,
 	.init = dapdirect_init,
 };

@@ -67,10 +67,20 @@ static struct transport *session;
 
 static int transport_select(struct command_context *ctx, const char *name)
 {
+	bool found = false;
+
 	/* name may only identify a known transport;
 	 * caller guarantees session's transport isn't yet set.*/
 	for (struct transport *t = transport_list; t; t = t->next) {
 		if (strcmp(t->name, name) == 0) {
+			found = true;
+		} else if (t->deprecated_name && strcmp(t->deprecated_name, name) == 0) {
+			found = true;
+			LOG_WARNING("DEPRECATED: use \'transport select %s\' not \'transport select %s\'",
+						t->name, t->deprecated_name);
+		}
+
+		if (found) {
 			int retval = t->select(ctx);
 			/* select() registers commands specific to this
 			 * transport, and may also reset the link, e.g.

@@ -50,6 +50,7 @@ struct transport {
 	 * "jtag", * "swd", "AVR_ISP" and more.
 	 */
 	const char *name;
+	const char *deprecated_name;
 
 	/**
 	 * When a transport is selected, this method registers

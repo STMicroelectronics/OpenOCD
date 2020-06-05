@@ -176,6 +176,25 @@ proc stlink args {
 	eval hla $args
 }
 
+proc using_stlink_jtag {} {
+	echo "DEPRECATED! use 'using_jtag' instead of 'using_stlink_jtag'"
+	eval using_jtag
+}
+
+proc using_stlink_swd {} {
+	echo "DEPRECATED! use 'using_swd' instead of 'using_stlink_swd'"
+	eval using_swd
+}
+
+proc stlink_dap {a args} {
+	"stlink_dap $a" {*}$args
+}
+
+proc "stlink_dap newtap" {args} {
+	echo "DEPRECATED! use 'swj_newdap' instead of 'stlink_dap newtap'"
+	eval swj_newdap $args
+}
+
 proc adapter_khz args {
 	echo "DEPRECATED! use 'adapter speed' not 'adapter_khz'"
 	eval adapter speed $args

@@ -81,6 +81,7 @@
 #define STLINK_CMD_SIZE_V2    (16)
 #define STLINK_CMD_SIZE_V1    (10)
 
+#define STLINK_VID            (0x0483)
 #define STLINK_V1_PID         (0x3744)
 #define STLINK_V2_PID         (0x3748)
 #define STLINK_V2_1_PID       (0x374B)
@@ -4521,6 +4522,19 @@ static int stlink_dap_init(void)
 		return ERROR_FAIL;
 	}
 
+	if (!stlink_dap_param.vid[0] && !stlink_dap_param.pid[0]) {
+		uint16_t pids[] = {
+			STLINK_V1_PID, STLINK_V2_PID, STLINK_V2_1_PID, STLINK_V2_1_NO_MSD_PID,
+			STLINK_V3_USBLOADER_PID, STLINK_V3E_PID, STLINK_V3S_PID, STLINK_V3_2VCP_PID
+		};
+
+		LOG_ERROR("Deprecated! use command 'st-link vid_pid' to list ST-Link USB devices");
+		for (unsigned int i = 0; i < ARRAY_SIZE(pids); i++) {
+			stlink_dap_param.vid[i] = STLINK_VID;
+			stlink_dap_param.pid[i] = pids[i];
+		}
+	}
+
 	retval = stlink_open(&stlink_dap_param, (void **)&stlink_dap_handle);
 	if (retval != ERROR_OK)
 		return retval;
@@ -4601,7 +4615,8 @@ static const struct dap_ops stlink_dap_ops = {
 	},
 };
 
-static const char *const stlink_dap_transport[] = { "dapdirect_jtag", "dapdirect_swd", NULL };
+static const char *const stlink_dap_transport[] = { "dapdirect_jtag", "dapdirect_swd",
+		"stlink_swd", "stlink_jtag", NULL };
 
 struct adapter_driver stlink_dap_adapter_driver = {
 	.name = "st-link",
