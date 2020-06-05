@@ -1656,7 +1656,9 @@ static int cortex_m_load_core_reg_u32(struct target *target,
 			 * in one Debug Core register.  So say r0 and r2 docs;
 			 * it was removed from r1 docs, but still works.
 			 */
-			cortexm_dap_read_coreregister_u32(target, value, 20);
+			retval = cortexm_dap_read_coreregister_u32(target, value, 20);
+			if (retval != ERROR_OK)
+				return retval;
 
 			switch (num) {
 				case ARMV7M_PRIMASK:
@@ -1742,7 +1744,9 @@ static int cortex_m_store_core_reg_u32(struct target *target,
 			 * in one Debug Core register.  So say r0 and r2 docs;
 			 * it was removed from r1 docs, but still works.
 			 */
-			cortexm_dap_read_coreregister_u32(target, &reg, 20);
+			retval = cortexm_dap_read_coreregister_u32(target, &reg, 20);
+			if (retval != ERROR_OK)
+				return retval;
 
 			switch (num) {
 				case ARMV7M_PRIMASK:
@@ -1762,7 +1766,9 @@ static int cortex_m_store_core_reg_u32(struct target *target,
 					break;
 			}
 
-			cortexm_dap_write_coreregister_u32(target, reg, 20);
+			retval = cortexm_dap_write_coreregister_u32(target, reg, 20);
+			if (retval != ERROR_OK)
+				return retval;
 
 			LOG_DEBUG("write special reg %i value 0x%" PRIx32 " ", (int)num, value);
 			break;
