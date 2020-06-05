@@ -557,7 +557,7 @@ static int cortex_m_debug_entry(struct target *target)
 	LOG_DEBUG("entered debug state in core mode: %s at PC 0x%" PRIx32 ", cpu %s, target->state: %s",
 		arm_mode_name(arm->core_mode),
 		buf_get_u32(arm->pc->value, 0, 32),
-		(dscsr & DSCSR_CDS == DSCSR_CDS) ? "in Secure state" : "in Non-Secure state",
+		((dscsr & DSCSR_CDS) == DSCSR_CDS) ? "in Secure state" : "in Non-Secure state",
 		target_state_name(target));
 
 	if (armv7m->post_debug_entry) {
@@ -2461,8 +2461,6 @@ int cortex_m_examine(struct target *target)
 		if (armv7m->fp_feature == FP_NONE &&
 		    armv7m->arm.core_cache->num_regs > ARMV7M_FP_REGS_IDX) {
 			/* free unavailable FPU registers */
-			size_t idx;
-
 			for (size_t idx = ARMV7M_FP_REGS_IDX; idx < armv7m->arm.core_cache->num_regs; idx++) {
 				free(armv7m->arm.core_cache->reg_list[idx].value);
 				free(armv7m->arm.core_cache->reg_list[idx].feature);
