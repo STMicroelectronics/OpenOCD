@@ -4461,6 +4461,22 @@ COMMAND_HANDLER(stlink_dap_interface_command)
 }
 
 /** */
+COMMAND_HANDLER(stlink_dap_use_stlink_server_command)
+{
+	uint16_t stlink_server_port = 7184;
+
+	if (CMD_ARGC > 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	else if (CMD_ARGC > 0)
+		COMMAND_PARSE_NUMBER(u16, CMD_ARGV[0], stlink_server_port);
+
+	stlink_dap_param.use_stlink_server = true;
+	stlink_dap_param.stlink_server_port = stlink_server_port;
+
+	return ERROR_OK;
+}
+
+/** */
 static const struct command_registration stlink_dap_subcommand_handlers[] = {
 	{
 		.name = "serial",
@@ -4482,6 +4498,13 @@ static const struct command_registration stlink_dap_subcommand_handlers[] = {
 		.mode = COMMAND_CONFIG,
 		.help = "select which ST-Link interface to use",
 		.usage = "usb | server [port]",
+	},
+	{
+		.name = "use_stlink_server",
+		.handler = &stlink_dap_use_stlink_server_command,
+		.mode = COMMAND_CONFIG,
+		.help = "use stlink-server instead of direct usb transactions",
+		.usage = "[port]",
 	},
 	COMMAND_REGISTRATION_DONE
 };

@@ -314,6 +314,21 @@ COMMAND_HANDLER(hl_interface_handle_stlink_interface_command)
 	return ERROR_OK;
 }
 
+COMMAND_HANDLER(hl_interface_handle_use_stlink_server_command)
+{
+	uint16_t stlink_server_port = 7184;
+
+	if (CMD_ARGC > 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	else if (CMD_ARGC > 0)
+		COMMAND_PARSE_NUMBER(u16, CMD_ARGV[0], stlink_server_port);
+
+	hl_if.param.use_stlink_server = true;
+	hl_if.param.stlink_server_port = stlink_server_port;
+
+	return ERROR_OK;
+}
+
 COMMAND_HANDLER(interface_handle_hla_command)
 {
 	if (CMD_ARGC != 1)
@@ -364,6 +379,13 @@ static const struct command_registration hl_interface_command_handlers[] = {
 	 .mode = COMMAND_CONFIG,
 	 .help = "select which ST-Link interface to use",
 	 .usage = "usb | server [port]",
+	},
+	{
+	 .name = "hla_use_stlink_server",
+	 .handler = &hl_interface_handle_use_stlink_server_command,
+	 .mode = COMMAND_CONFIG,
+	 .help = "use stlink-server instead of direct usb transactions",
+	 .usage = "[port]",
 	},
 	{
 	 .name = "hla_command",
