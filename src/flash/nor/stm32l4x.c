@@ -197,7 +197,7 @@ static const struct stm32l4_rev stm32_496_revs[] = {
 };
 
 static const struct stm32l4_rev stm32_497_revs[] = {
-	{ 0x1000, "1.0" },
+	{ 0x1000, "1.0" }, { 0x1001, "1.1" },
 };
 
 static const struct stm32l4_part_info stm32l4_parts[] = {
@@ -353,7 +353,7 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	},
 };
 
-/* flash bank stm32l4x <base> <size> 0 0 <target#> */
+/* flash bank stm32l4x <base> <size> 0 0 <target#> [mcu_idcode] */
 FLASH_BANK_COMMAND_HANDLER(stm32l4_flash_bank_command)
 {
 	struct stm32l4_flash_bank *stm32l4_info;
@@ -363,7 +363,7 @@ FLASH_BANK_COMMAND_HANDLER(stm32l4_flash_bank_command)
 
 	stm32l4_info = malloc(sizeof(struct stm32l4_flash_bank));
 	if (!stm32l4_info)
-		return ERROR_FAIL; /* Checkme: What better error to use?*/
+		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
 	bank->driver_priv = stm32l4_info;
 
 	/* The flash write must be aligned to a double word (8-bytes) boundary.
@@ -372,6 +372,12 @@ FLASH_BANK_COMMAND_HANDLER(stm32l4_flash_bank_command)
 
 	stm32l4_info->probed = false;
 	stm32l4_info->user_bank_size = bank->size;
+
+	/* in some devices the DBGMCU_IDCODE register cannot be read
+	 * this will allow the user to give a value to pass the probe step */
+	stm32l4_info->idcode = 0;
+	if (CMD_ARGC == 7)
+		COMMAND_PARSE_NUMBER(u32, CMD_ARGV[6], stm32l4_info->idcode);
 
 	return ERROR_OK;
 }
@@ -869,16 +875,19 @@ static int stm32l4_probe(struct flash_bank *bank)
 	struct target *target = bank->target;
 	struct stm32l4_flash_bank *stm32l4_info = bank->driver_priv;
 	const struct stm32l4_part_info *part_info;
+	int retval;
 	uint16_t flash_size_kb = 0xffff;
 	uint32_t device_id;
 	uint32_t options;
 
 	stm32l4_info->probed = false;
 
-	/* read stm32 device id registers */
-	int retval = stm32l4_read_idcode(bank, &stm32l4_info->idcode);
-	if (retval != ERROR_OK)
-		return retval;
+	/* read stm32 device id register if not specified by the user */
+	if (stm32l4_info->idcode == 0) {
+		retval = stm32l4_read_idcode(bank, &stm32l4_info->idcode);
+		if (retval != ERROR_OK)
+			return retval;
+	}
 
 	device_id = stm32l4_info->idcode & 0xFFF;
 
