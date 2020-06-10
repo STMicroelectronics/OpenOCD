@@ -168,6 +168,10 @@ static const struct stm32l4_rev stm32_466_revs[] = {
 	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x2000, "B" },
 };
 
+static const struct stm32l4_rev stm32_467_revs[] = {
+	{ 0x1000, "A" },
+};
+
 static const struct stm32l4_rev stm32_468_revs[] = {
 	{ 0x1000, "A" }, { 0x2000, "B" }, { 0x2001, "Z" }, { 0x2002, "Y" },
 };
@@ -268,6 +272,16 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .device_str            = "STM32G03/G04xx",
 	  .max_flash_size_kb     = 64,
 	  .has_dual_bank         = false,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x1FFF75E0,
+	},
+	{
+	  .id                    = 0x467,
+	  .revs                  = stm32_467_revs,
+	  .num_revs              = ARRAY_SIZE(stm32_467_revs),
+	  .device_str            = "STM32G0Bx/G0Cx",
+	  .max_flash_size_kb     = 512,
+	  .has_dual_bank         = true,
 	  .flash_regs_base       = 0x40022000,
 	  .fsize_addr            = 0x1FFF75E0,
 	},
@@ -964,6 +978,18 @@ static int stm32l4_probe(struct flash_bank *bank)
 
 		/* check DUAL_BANK bit[21] if the flash is less than 1M */
 		if (flash_size_kb == 1024 || (options & BIT(21))) {
+			stm32l4_info->dual_bank_mode = true;
+			stm32l4_info->bank1_sectors = num_pages / 2;
+		}
+		break;
+	case 0x467: /* STM32G0B/G0Cxx */
+		/* single/dual bank depending on bit(21) */
+		page_size_kb = 2;
+		num_pages = flash_size_kb / page_size_kb;
+		stm32l4_info->bank1_sectors = num_pages;
+
+		/* check DUAL_BANK bit */
+		if (options & BIT(21)) {
 			stm32l4_info->dual_bank_mode = true;
 			stm32l4_info->bank1_sectors = num_pages / 2;
 		}
