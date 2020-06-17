@@ -430,12 +430,12 @@ static int stm32lx_write_half_pages(struct flash_bank *bank, const uint8_t *buff
 	struct stm32lx_flash_bank *stm32lx_info = bank->driver_priv;
 
 	uint32_t hp_nb = stm32lx_info->part_info.page_size / 2;
-	uint32_t buffer_size = 16384;
+	uint32_t buffer_size = (16384 / hp_nb) * hp_nb; /* must be multiple of hp_nb */
 	struct working_area *write_algorithm;
 	struct working_area *source;
 	uint32_t address = bank->base + offset;
 
-	struct reg_param reg_params[3];
+	struct reg_param reg_params[5];
 	struct armv7m_algorithm armv7m_info;
 
 	int retval = ERROR_OK;
@@ -445,6 +445,10 @@ static int stm32lx_write_half_pages(struct flash_bank *bank, const uint8_t *buff
 	};
 
 	/* Make sure we're performing a half-page aligned write. */
+	if (offset % hp_nb) {
+		LOG_ERROR("The offset must be %" PRIu32 "B-aligned but it is %" PRIi32 "B)", hp_nb, offset);
+		return ERROR_FAIL;
+	}
 	if (count % hp_nb) {
 		LOG_ERROR("The byte count must be %" PRIu32 "B-aligned but count is %" PRIu32 "B)", hp_nb, count);
 		return ERROR_FAIL;
@@ -481,6 +485,9 @@ static int stm32lx_write_half_pages(struct flash_bank *bank, const uint8_t *buff
 
 			LOG_WARNING("no large enough working area available, can't do block memory writes");
 			return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
+		} else {
+			/* Make sure we're still asking for an integral number of half-pages */
+			buffer_size -= buffer_size % hp_nb;
 		}
 	}
 
@@ -489,6 +496,8 @@ static int stm32lx_write_half_pages(struct flash_bank *bank, const uint8_t *buff
 	init_reg_param(&reg_params[0], "r0", 32, PARAM_OUT);
 	init_reg_param(&reg_params[1], "r1", 32, PARAM_OUT);
 	init_reg_param(&reg_params[2], "r2", 32, PARAM_OUT);
+	init_reg_param(&reg_params[3], "r3", 32, PARAM_OUT);
+	init_reg_param(&reg_params[4], "r4", 32, PARAM_OUT);
 
 	/* Enable half-page write */
 	retval = stm32lx_enable_write_half_page(bank);
@@ -499,6 +508,8 @@ static int stm32lx_write_half_pages(struct flash_bank *bank, const uint8_t *buff
 		destroy_reg_param(&reg_params[0]);
 		destroy_reg_param(&reg_params[1]);
 		destroy_reg_param(&reg_params[2]);
+		destroy_reg_param(&reg_params[3]);
+		destroy_reg_param(&reg_params[4]);
 		return retval;
 	}
 
@@ -529,8 +540,12 @@ static int stm32lx_write_half_pages(struct flash_bank *bank, const uint8_t *buff
 		buf_set_u32(reg_params[0].value, 0, 32, address);
 		/* The source address of the copy (R1) */
 		buf_set_u32(reg_params[1].value, 0, 32, source->address);
-		/* The length of the copy (R2) */
-		buf_set_u32(reg_params[2].value, 0, 32, this_count / 4);
+		/* The number of half pages to copy (R2) */
+		buf_set_u32(reg_params[2].value, 0, 32, this_count / hp_nb);
+		/* The size in byes of a half page (R3) */
+		buf_set_u32(reg_params[3].value, 0, 32, hp_nb);
+		/* The flash base address (R4) */
+		buf_set_u32(reg_params[4].value, 0, 32, stm32lx_info->flash_base);
 
 		/* 5: Execute the bunch of code */
 		retval = target_run_algorithm(target, 0, NULL, sizeof(reg_params)
@@ -598,6 +613,8 @@ static int stm32lx_write_half_pages(struct flash_bank *bank, const uint8_t *buff
 	destroy_reg_param(&reg_params[0]);
 	destroy_reg_param(&reg_params[1]);
 	destroy_reg_param(&reg_params[2]);
+	destroy_reg_param(&reg_params[3]);
+	destroy_reg_param(&reg_params[4]);
 
 	return retval;
 }
