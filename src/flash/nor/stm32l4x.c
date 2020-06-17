@@ -325,7 +325,7 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .id                    = 0x495,
 	  .revs                  = stm32_495_revs,
 	  .num_revs              = ARRAY_SIZE(stm32_495_revs),
-	  .device_str            = "STM32WB5x",
+	  .device_str            = "STM32WBxx",
 	  .max_flash_size_kb     = 1024,
 	  .has_dual_bank         = false,
 	  .flash_regs_base       = 0x58004000,
@@ -1012,7 +1012,7 @@ static int stm32l4_probe(struct flash_bank *bank)
 			stm32l4_info->bank1_sectors = num_pages / 2;
 		}
 		break;
-	case 0x495: /* STM32WB5x */
+	case 0x495: /* STM32WB5x/WB3x */
 	case 0x496: /* STM32WB3x */
 		/* single bank flash */
 		page_size_kb = 4;
