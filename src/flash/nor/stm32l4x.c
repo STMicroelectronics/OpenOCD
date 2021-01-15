@@ -1222,8 +1222,33 @@ static int get_stm32l4_info(struct flash_bank *bank, char *buf, int buf_size)
 			}
 		}
 
+		char device_str[20];
+		snprintf(device_str, ARRAY_SIZE(device_str), "%s", part_info->device_str);
+
+		/* hook for STM32WBxx devices to get the precise device name check the stack_id */
+		if (part_info->id == 0x495 || part_info->id == 0x496 || part_info->id == 0x494) {
+			struct target *target = bank->target;
+			uint32_t stack_id;
+			int retval = target_read_u32(target, 0x1fff77dc, &stack_id);
+			if (retval != ERROR_OK)
+				return retval;
+
+			/**
+			 * stack_id content (the first 2 bytes are ascii codes for the device name):
+			 * 0x 35 35 00 00 >> 55
+			 * 0x 35 30 00 00 >> 50
+			 * 0x 33 35 00 00 >> 35
+			 * 0x 33 30 00 00 >> 30
+			 * 0x 31 35 00 00 >> 15
+			 * 0x 31 30 00 00 >> 10
+			 */
+
+			if (stack_id != 0xffffffff)
+				snprintf(device_str, ARRAY_SIZE(device_str), "STM32WB%c%c", stack_id & 0xff, (stack_id >> 8) & 0xff);
+		}
+
 		int buf_len = snprintf(buf, buf_size, "%s - Rev %s : 0x%04x",
-				part_info->device_str, rev_str ? rev_str : "'unknown'", rev_id);
+				device_str, rev_str ? rev_str : "'unknown'", rev_id);
 
 		if (stm32l4_info->probed)
 			snprintf(buf + buf_len, buf_size - buf_len, " - %s-bank",
