@@ -573,7 +573,7 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	},
 };
 
-/* flash bank stm32l4x <base> <size> 0 0 <target#> */
+/* flash bank stm32l4x <base> <size> 0 0 <target#> [mcu_idcode] */
 FLASH_BANK_COMMAND_HANDLER(stm32l4_flash_bank_command)
 {
 	struct stm32l4_flash_bank *stm32l4_info;
@@ -597,6 +597,12 @@ FLASH_BANK_COMMAND_HANDLER(stm32l4_flash_bank_command)
 	stm32l4_info->probed = false;
 	stm32l4_info->otp_enabled = false;
 	stm32l4_info->user_bank_size = bank->size;
+
+	/* in some devices the DBGMCU_IDCODE register cannot be read
+	 * this will allow the user to give a value to pass the probe phase */
+	stm32l4_info->idcode = 0;
+	if (CMD_ARGC == 7)
+		COMMAND_PARSE_NUMBER(u32, CMD_ARGV[6], stm32l4_info->idcode);
 
 	return ERROR_OK;
 }
@@ -1499,13 +1505,16 @@ static int stm32l4_probe(struct flash_bank *bank)
 	const struct stm32l4_part_info *part_info;
 	uint16_t flash_size_kb = 0xffff;
 	uint32_t device_id;
+	int retval;
 
 	stm32l4_info->probed = false;
 
-	/* read stm32 device id registers */
-	int retval = stm32l4_read_idcode(bank, &stm32l4_info->idcode);
-	if (retval != ERROR_OK)
-		return retval;
+	/* read stm32 device id register, if not specified by the user */
+	if (stm32l4_info->idcode == 0) {
+		retval = stm32l4_read_idcode(bank, &stm32l4_info->idcode);
+		if (retval != ERROR_OK)
+			return retval;
+	}
 
 	device_id = stm32l4_info->idcode & 0xFFF;
 
