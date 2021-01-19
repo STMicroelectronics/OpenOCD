@@ -320,7 +320,7 @@ static const struct stm32l4_rev stm32_496_revs[] = {
 };
 
 static const struct stm32l4_rev stm32_497_revs[] = {
-	{ 0x1000, "1.0" },
+	{ 0x1000, "1.0" }, { 0x1001, "1.1" },
 };
 
 static const struct stm32l4_part_info stm32l4_parts[] = {
