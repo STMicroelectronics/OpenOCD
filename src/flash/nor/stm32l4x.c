@@ -74,6 +74,9 @@
  *
  * RM0471 (STM32WB50)
  * http://www.st.com/resource/en/reference_manual/dm00622834.pdf
+ *
+ * RM0473 (STM32WB1x)
+ * TODO add the link when the RM is published
  */
 
 /* STM32WLxxx series for reference.
@@ -304,6 +307,10 @@ static const struct stm32l4_rev stm32_479_revs[] = {
 	{ 0x1000, "A" },
 };
 
+static const struct stm32l4_rev stm32_494_revs[] = {
+	{ 0x1000, "A" }, { 0x2000, "B" },
+};
+
 static const struct stm32l4_rev stm32_495_revs[] = {
 	{ 0x2001, "2.1" },
 };
@@ -507,6 +514,19 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .max_flash_size_kb     = 512,
 	  .flags                 = F_NONE,
 	  .flash_regs_base       = 0x40022000,
+	  .default_flash_regs    = stm32l4_flash_regs,
+	  .fsize_addr            = 0x1FFF75E0,
+	  .otp_base              = 0x1FFF7000,
+	  .otp_size              = 1024,
+	},
+	{
+	  .id                    = 0x494,
+	  .revs                  = stm32_494_revs,
+	  .num_revs              = ARRAY_SIZE(stm32_494_revs),
+	  .device_str            = "STM32WB1x",
+	  .max_flash_size_kb     = 320,
+	  .flags                 = F_NONE,
+	  .flash_regs_base       = 0x58004000,
 	  .default_flash_regs    = stm32l4_flash_regs,
 	  .fsize_addr            = 0x1FFF75E0,
 	  .otp_base              = 0x1FFF7000,
@@ -1609,6 +1629,7 @@ static int stm32l4_probe(struct flash_bank *bank)
 	case 0x466: /* STM32G03/G04xx */
 	case 0x468: /* STM32G43/G44xx */
 	case 0x479: /* STM32G49/G4Axx */
+	case 0x494: /* STM32WB1x */
 	case 0x497: /* STM32WLEx */
 		/* single bank flash */
 		page_size_kb = 2;
