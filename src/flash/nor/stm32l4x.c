@@ -237,6 +237,8 @@ struct stm32l4_flash_bank {
 	bool dual_bank_mode;
 	int hole_sectors;
 	uint32_t user_bank_size;
+	uint32_t cr_bker_mask;
+	uint32_t sr_bsy_mask;
 	uint32_t wrpxxr_mask;
 	const struct stm32l4_part_info *part_info;
 	const uint32_t *flash_regs;
@@ -723,6 +725,7 @@ static inline int stm32l4_write_flash_reg_by_index(struct flash_bank *bank,
 
 static int stm32l4_wait_status_busy(struct flash_bank *bank, int timeout)
 {
+	struct stm32l4_flash_bank *stm32l4_info = bank->driver_priv;
 	uint32_t status;
 	int retval = ERROR_OK;
 
@@ -732,7 +735,7 @@ static int stm32l4_wait_status_busy(struct flash_bank *bank, int timeout)
 		if (retval != ERROR_OK)
 			return retval;
 		LOG_DEBUG("status: 0x%" PRIx32 "", status);
-		if ((status & FLASH_BSY) == 0)
+		if ((status & stm32l4_info->sr_bsy_mask) == 0)
 			break;
 		if (timeout-- <= 0) {
 			LOG_ERROR("timed out waiting for flash");
@@ -1112,7 +1115,7 @@ static int stm32l4_erase(struct flash_bank *bank, unsigned int first,
 		if (i >= stm32l4_info->bank1_sectors) {
 			uint8_t snb;
 			snb = i - stm32l4_info->bank1_sectors;
-			erase_flags |= snb << FLASH_PAGE_SHIFT | FLASH_CR_BKER;
+			erase_flags |= snb << FLASH_PAGE_SHIFT | stm32l4_info->cr_bker_mask;
 		} else
 			erase_flags |= i << FLASH_PAGE_SHIFT;
 		retval = stm32l4_write_flash_reg_by_index(bank, STM32_FLASH_CR_INDEX, erase_flags);
@@ -1487,6 +1490,14 @@ static int stm32l4_write(struct flash_bank *bank, const uint8_t *buffer,
 	if (stm32l4_info->tzen && (stm32l4_info->rdp == RDP_LEVEL_0_5)) {
 		LOG_INFO("RDP level 0.5, couldn't use the flash loader (since the specified work-area could be secure)");
 		use_loader = false;
+	} else if ((stm32l4_info->part_info->id == 0x467) && stm32l4_info->dual_bank_mode) {
+		/**
+		 * FIXME update the flash loader to use a custom FLASH_SR_BSY mask
+		 * Workaround for STM32G0Bx/G0Cx devices in dual bank mode,
+		 * as the flash loader does not use the SR_BSY2
+		 */
+		LOG_INFO("Couldn't use the flash loader in dual-bank mode");
+		use_loader = false;
 	}
 
 	if (use_loader)
@@ -1562,6 +1573,8 @@ static int stm32l4_probe(struct flash_bank *bank)
 
 	part_info = stm32l4_info->part_info;
 	stm32l4_info->flash_regs = part_info->default_flash_regs;
+	stm32l4_info->cr_bker_mask = FLASH_BKER;
+	stm32l4_info->sr_bsy_mask = FLASH_BSY;
 
 	char device_info[1024];
 	retval = bank->driver->info(bank, device_info, sizeof(device_info));
@@ -1681,9 +1694,11 @@ static int stm32l4_probe(struct flash_bank *bank)
 		page_size_kb = 2;
 		num_pages = flash_size_kb / page_size_kb;
 		stm32l4_info->bank1_sectors = num_pages;
+		stm32l4_info->cr_bker_mask = FLASH_BKER_G0;
 
 		/* check DUAL_BANK bit */
 		if (stm32l4_info->optr & BIT(21)) {
+			stm32l4_info->sr_bsy_mask = FLASH_BSY | FLASH_BSY2;
 			stm32l4_info->dual_bank_mode = true;
 			stm32l4_info->bank1_sectors = num_pages / 2;
 		}
