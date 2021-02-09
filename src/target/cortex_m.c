@@ -585,6 +585,13 @@ static int cortex_m_poll(struct target *target)
 		return retval;
 	}
 
+	/* if dhcsr read value is zero, then debug is lost, re-enter debug */
+	if (!cortex_m->dcb_dhcsr) {
+		retval = cortex_m_debug_entry(target);
+		if (retval != ERROR_OK)
+			return retval;
+	}
+
 	/* Recover from lockup.  See ARMv7-M architecture spec,
 	 * section B1.5.15 "Unrecoverable exception cases".
 	 */
