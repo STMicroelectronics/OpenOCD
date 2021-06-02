@@ -265,7 +265,7 @@ struct stm32l4_wrp {
 };
 
 /* human readable list of families this drivers supports (sorted alphabetically) */
-static const char *device_families = "STM32G0/G4/L4/L4+/L5/WB/WL";
+static const char *device_families = "STM32G0/G4/L4/L4+/L5/U5/WB/WL";
 
 static const struct stm32l4_rev stm32_415_revs[] = {
 	{ 0x1000, "1" }, { 0x1001, "2" }, { 0x1003, "3" }, { 0x1007, "4" }
@@ -1608,6 +1608,7 @@ static int stm32l4_probe(struct flash_bank *bank)
 	int retval;
 
 	stm32l4_info->probed = false;
+	stm32l4_info->part_info = NULL;
 
 	/* read stm32 device id register, if not specified by the user */
 	if (stm32l4_info->idcode == 0) {
