@@ -37,12 +37,14 @@
 #include <strings.h>
 #endif
 
+#define GIT_URL "[https://github.com/STMicroelectronics/OpenOCD]"
+
 #ifdef PKGBLDDATE
 #define OPENOCD_VERSION	\
-	"Open On-Chip Debugger " VERSION RELSTR " (" PKGBLDDATE ")"
+	"Open On-Chip Debugger " VERSION RELSTR " (" PKGBLDDATE ") " GIT_URL
 #else
 #define OPENOCD_VERSION	\
-	"Open On-Chip Debugger " VERSION RELSTR
+	"Open On-Chip Debugger " VERSION RELSTR GIT_URL
 #endif
 
 static const char openocd_startup_tcl[] = {
