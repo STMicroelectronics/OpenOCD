@@ -4516,6 +4516,13 @@ static int stlink_usb_cnt_misc_rw_queue(void *handle, const struct dap_queue *q,
 
 	if (!(h->version.flags & STLINK_F_HAS_RW_MISC))
 		return 0;
+	/*
+	 * RW_MISC sequence doesn't lock the st-link, so are not safe in shared mode.
+	 * Don't use it with TCP backend to prevent any issue in case of sharing.
+	 * This further degrades the performance, on top of TCP server overhead.
+	 */
+	if (h->backend == &stlink_tcp_backend)
+		return 0;
 
 	for (i = 0; i < len; i++) {
 		if (q[i].cmd != CMD_MEM_AP_READ32 && q[i].cmd != CMD_MEM_AP_WRITE32)
