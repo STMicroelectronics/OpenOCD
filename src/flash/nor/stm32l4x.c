@@ -554,7 +554,7 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .id                    = DEVID_STM32WB5XX,
 	  .revs                  = stm32wb5xx_revs,
 	  .num_revs              = ARRAY_SIZE(stm32wb5xx_revs),
-	  .device_str            = "STM32WB5x",
+	  .device_str            = "STM32WB5x/WB3x",
 	  .max_flash_size_kb     = 1024,
 	  .flags                 = F_NONE,
 	  .flash_regs_base       = 0x58004000,
@@ -1664,6 +1664,36 @@ static int stm32l4_read_idcode(struct flash_bank *bank, uint32_t *id)
 	return (retval == ERROR_OK) ? ERROR_FAIL : retval;
 }
 
+static const char *get_stm32l4_device_str(struct flash_bank *bank)
+{
+	struct stm32l4_flash_bank *stm32l4_info = bank->driver_priv;
+	const struct stm32l4_part_info *part_info = stm32l4_info->part_info;
+	assert(part_info);
+
+	if (part_info->id == DEVID_STM32WB5XX) {
+		uint32_t partno_codif;
+		int retval = target_read_u32(bank->target, PARTNO_CODIFICATION, &partno_codif);
+
+		/* if retval != ERROR_OK return the default device name (device_str) */
+		if (retval == ERROR_OK && partno_codif != 0xFFFFFFFF) {
+			/* PARTNO_CODIFICATION first 2 bytes are ASCII codes for the first 2
+			 * digits of the device name */
+			switch (partno_codif) {
+			case 0x00003535:
+				return "STM32WB55x";
+			case 0x00003035:
+				return "STM32WB50x";
+			case 0x00003533:
+				return "STM32WB35x";
+			case 0x00003033:
+				return "STM32WB30x";
+			}
+		}
+	}
+
+	return part_info->device_str;
+}
+
 static const char *get_stm32l4_rev_str(struct flash_bank *bank)
 {
 	struct stm32l4_flash_bank *stm32l4_info = bank->driver_priv;
@@ -1727,11 +1757,12 @@ static int stm32l4_probe(struct flash_bank *bank)
 	}
 
 	part_info = stm32l4_info->part_info;
+	const char *device_str = get_stm32l4_device_str(bank);
 	const char *rev_str = get_stm32l4_rev_str(bank);
 	const uint16_t rev_id = stm32l4_info->idcode >> 16;
 
 	LOG_INFO("device idcode = 0x%08" PRIx32 " (%s - Rev %s : 0x%04x)",
-			stm32l4_info->idcode, part_info->device_str, rev_str, rev_id);
+			stm32l4_info->idcode, device_str, rev_str, rev_id);
 
 	stm32l4_info->flash_regs_base = stm32l4_info->part_info->flash_regs_base;
 	stm32l4_info->data_width = (part_info->flags & F_QUAD_WORD_PROG) ? 16 : 8;
@@ -2070,7 +2101,7 @@ static int get_stm32l4_info(struct flash_bank *bank, struct command_invocation *
 
 	if (part_info) {
 		const uint16_t rev_id = stm32l4_info->idcode >> 16;
-		command_print_sameline(cmd, "%s - Rev %s : 0x%04x", part_info->device_str,
+		command_print_sameline(cmd, "%s - Rev %s : 0x%04x", get_stm32l4_device_str(bank),
 				get_stm32l4_rev_str(bank), rev_id);
 		if (stm32l4_info->probed)
 			command_print_sameline(cmd, " - %s-bank", get_stm32l4_bank_type_str(bank));
