@@ -342,6 +342,11 @@ static const struct stm32l4_rev stm32u57_u58xx_revs[] = {
 	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1003, "Y" }, { 0x2000, "B" }, { 0x2001, "X" },
 };
 
+
+static const struct stm32l4_rev stm32wbaxx_revs[] = {
+	{ 0x1000, "A" },
+};
+
 static const struct stm32l4_rev stm32wb1xx_revs[] = {
 	{ 0x1000, "A" }, { 0x2000, "B" },
 };
@@ -589,6 +594,18 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .flash_regs_base       = 0x40022000,
 	  .fsize_addr            = 0x0BFA07A0,
 	  .otp_base              = 0x0BFA0000,
+	  .otp_size              = 512,
+	},
+	{
+	  .id                    = DEVID_STM32WBAXX,
+	  .revs                  = stm32wbaxx_revs,
+	  .num_revs              = ARRAY_SIZE(stm32wbaxx_revs),
+	  .device_str            = "STM32WBAx",
+	  .max_flash_size_kb     = 1024,
+	  .flags                 = F_QUAD_WORD_PROG | F_HAS_TZ | F_HAS_L5_FLASH_REGS,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x0FF907A0,
+	  .otp_base              = 0x0FF90000,
 	  .otp_size              = 512,
 	},
 	{
@@ -2079,6 +2096,19 @@ static int stm32l4_probe(struct flash_bank *bank)
 			stm32l4_info->dual_bank_mode = true;
 			stm32l4_info->bank1_sectors = num_pages / 2;
 		}
+		break;
+	case DEVID_STM32WBAXX:
+		/* single bank flash */
+		page_size_kb = 8;
+		num_pages = flash_size_kb / page_size_kb;
+		stm32l4_info->bank1_sectors = num_pages;
+
+		/**
+		 * by default use the non-secure registers,
+		 * switch secure registers if TZ is enabled and RDP is LEVEL_0
+		 */
+		if (stm32l4_info->tzen && stm32l4_info->rdp == RDP_LEVEL_0)
+			stm32l4_info->flash_regs = stm32l5_s_flash_regs;
 		break;
 	case DEVID_STM32WB5XX:
 	case DEVID_STM32WB3XX:
