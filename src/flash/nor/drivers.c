@@ -72,6 +72,7 @@ static const struct flash_driver * const flash_drivers[] = {
 	&stm32f2x_flash,
 	&stm32lx_flash,
 	&stm32l4x_flash,
+	&stm32h5x_flash,
 	&stm32h7x_flash,
 	&stmsmi_flash,
 	&stmqspi_flash,

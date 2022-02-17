@@ -294,6 +294,7 @@ extern const struct flash_driver sim3x_flash;
 extern const struct flash_driver stellaris_flash;
 extern const struct flash_driver stm32f1x_flash;
 extern const struct flash_driver stm32f2x_flash;
+extern const struct flash_driver stm32h5x_flash;
 extern const struct flash_driver stm32h7x_flash;
 extern const struct flash_driver stm32l4x_flash;
 extern const struct flash_driver stm32lx_flash;
