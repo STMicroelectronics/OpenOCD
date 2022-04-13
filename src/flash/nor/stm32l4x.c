@@ -342,6 +342,9 @@ static const struct stm32l4_rev stm32u57_u58xx_revs[] = {
 	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1003, "Y" }, { 0x2000, "B" }, { 0x2001, "X" },
 };
 
+static const struct stm32l4_rev stm32u5f_u5gxx_revs[] = {
+	{ 0x1000, "A" }, { 0x1001, "Z" },
+};
 
 static const struct stm32l4_rev stm32wbaxx_revs[] = {
 	{ 0x1000, "A" },
@@ -590,6 +593,18 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .num_revs              = ARRAY_SIZE(stm32u57_u58xx_revs),
 	  .device_str            = "STM32U57/U58xx",
 	  .max_flash_size_kb     = 2048,
+	  .flags                 = F_HAS_DUAL_BANK | F_QUAD_WORD_PROG | F_HAS_TZ | F_HAS_L5_FLASH_REGS,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x0BFA07A0,
+	  .otp_base              = 0x0BFA0000,
+	  .otp_size              = 512,
+	},
+	{
+	  .id                    = DEVID_STM32U5F_U5GXX,
+	  .revs                  = stm32u5f_u5gxx_revs,
+	  .num_revs              = ARRAY_SIZE(stm32u5f_u5gxx_revs),
+	  .device_str            = "STM32U5F/U5Gxx",
+	  .max_flash_size_kb     = 4096,
 	  .flags                 = F_HAS_DUAL_BANK | F_QUAD_WORD_PROG | F_HAS_TZ | F_HAS_L5_FLASH_REGS,
 	  .flash_regs_base       = 0x40022000,
 	  .fsize_addr            = 0x0BFA07A0,
@@ -2086,13 +2101,27 @@ static int stm32l4_probe(struct flash_bank *bank)
 			stm32l4_info->bank1_sectors = num_pages / 2;
 		}
 		break;
-	case DEVID_STM32U59_U5AXX:
-	case DEVID_STM32U57_U58XX:
 	case DEVID_STM32U53_U54XX:
+	case DEVID_STM32U57_U58XX:
+	case DEVID_STM32U59_U5AXX:
+	case DEVID_STM32U5F_U5GXX:
+		/* according to RM0456 Rev 4, Chapter 7.3.1 and 7.9.13
+		 * U53x/U54x have 512K max flash size:
+		 *   512K variants are always in DUAL BANK mode
+		 *   256K and 128K variants can be in DUAL BANK mode if FLASH_OPTR:DUALBANK is set
+		 * U57x/U58x have 2M max flash size:
+		 *   2M variants are always in DUAL BANK mode
+		 *   1M variants can be in DUAL BANK mode if FLASH_OPTR:DUALBANK is set
+		 * U59x/U5Ax/U5Fx/U5Gx have 4M max flash size:
+		 *   4M variants are always in DUAL BANK mode
+		 *   2M variants can be in DUAL BANK mode if FLASH_OPTR:DUALBANK is set
+		 * Note: flash banks are always contiguous
+		 */
+
 		page_size_kb = 8;
 		num_pages = flash_size_kb / page_size_kb;
 		stm32l4_info->bank1_sectors = num_pages;
-		if (flash_size_kb > 1024 || (stm32l4_info->optr & FLASH_U5_DUALBANK)) {
+		if (is_max_flash_size || (stm32l4_info->optr & FLASH_U5_DUALBANK)) {
 			stm32l4_info->dual_bank_mode = true;
 			stm32l4_info->bank1_sectors = num_pages / 2;
 		}
