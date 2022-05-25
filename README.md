@@ -30,5 +30,5 @@ But check the following boxes before posting an issue:
 ##### Pull Requests
 For the moment, the Pull Request feature is not deployed. STMicroelectronics is working on a Contributor License Agreement procedure
 
-**Copyright &copy; 2020 STMicroelectronics. All rights reserved.**
+**Copyright &copy; 2022 STMicroelectronics. All rights reserved.**
 
