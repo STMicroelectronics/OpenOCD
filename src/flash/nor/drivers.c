@@ -61,6 +61,7 @@ extern const struct flash_driver rp2040_flash;
 extern const struct flash_driver sh_qspi_flash;
 extern const struct flash_driver sim3x_flash;
 extern const struct flash_driver stellaris_flash;
+extern const struct flash_driver stldr_flash;
 extern const struct flash_driver stm32f1x_flash;
 extern const struct flash_driver stm32f2x_flash;
 extern const struct flash_driver stm32lx_flash;
@@ -138,6 +139,7 @@ static const struct flash_driver * const flash_drivers[] = {
 	&sh_qspi_flash,
 	&sim3x_flash,
 	&stellaris_flash,
+	&stldr_flash,
 	&stm32f1x_flash,
 	&stm32f2x_flash,
 	&stm32lx_flash,

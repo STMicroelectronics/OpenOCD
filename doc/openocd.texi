@@ -7405,6 +7405,31 @@ applied to all of them.
 @end deffn
 @end deffn
 
+@deffn {Flash Driver} {stldr}
+ST offers a free of charge flashloaders for STM32 devices.
+This driver permits to re-use these loaders to support both internal external memories.
+
+@example
+flash bank $_FLASHNAME stm32h7x 0 0 0 0 $_TARGETNAME /path/to/0x450.stldr
+@end example
+
+Some stldr-specific commands are defined:
+
+@deffn {Command} {stldr set_loader} num /path/to/loader.stldr
+Sets the loader path
+
+The @var{num} parameter is a value shown by @command{flash banks}.
+@end deffn
+
+
+@deffn {Command} {stldr mass_erase} num
+Mass erases the entire flash bank.
+
+The @var{num} parameter is a value shown by @command{flash banks}.
+@end deffn
+
+@end deffn
+
 @deffn {Flash Driver} {stm32f1x}
 All members of the STM32F0, STM32F1 and STM32F3 microcontroller families
 from STMicroelectronics and all members of the GD32F1x0, GD32F3x0 and GD32E23x microcontroller
