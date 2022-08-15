@@ -292,6 +292,7 @@ extern const struct flash_driver rsl10_flash;
 extern const struct flash_driver sh_qspi_flash;
 extern const struct flash_driver sim3x_flash;
 extern const struct flash_driver stellaris_flash;
+extern const struct flash_driver stldr_flash;
 extern const struct flash_driver stm32f1x_flash;
 extern const struct flash_driver stm32f2x_flash;
 extern const struct flash_driver stm32h5x_flash;
