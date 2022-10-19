@@ -358,6 +358,10 @@ static const struct stm32l4_rev stm32wle_wl5xx_revs[] = {
 	{ 0x1000, "1.0" },
 };
 
+static const struct stm32l4_rev stm32u53_u54xx_revs[] = {
+	{ 0x1000, "A" },
+};
+
 static const struct stm32l4_part_info stm32l4_parts[] = {
 	{
 	  .id                    = DEVID_STM32L47_L48XX,
@@ -635,6 +639,18 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .otp_base              = 0x1FFF7000,
 	  .otp_size              = 1024,
 	},
+	{
+	  .id                    = DEVID_STM32U53_U54XX,
+	  .revs                  = stm32u53_u54xx_revs,
+	  .num_revs              = ARRAY_SIZE(stm32u53_u54xx_revs),
+	  .device_str            = "STM32U53/U54xx",
+	  .max_flash_size_kb     = 512,
+	  .flags                 = F_HAS_DUAL_BANK | F_QUAD_WORD_PROG | F_HAS_TZ | F_HAS_L5_FLASH_REGS,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x0BFA07A0,
+	  .otp_base              = 0x0BFA0000,
+	  .otp_size              = 512,
+	},
 };
 
 /* flash bank stm32l4x <base> <size> 0 0 <target#> */
@@ -876,9 +892,10 @@ static int stm32l4_set_secbb(struct flash_bank *bank, uint32_t value)
 
 	const uint8_t secbb_regs[] = {
 			FLASH_SECBB1(1), FLASH_SECBB1(2), FLASH_SECBB1(3), FLASH_SECBB1(4), /* bank 1 SECBB register offsets */
-			FLASH_SECBB2(1), FLASH_SECBB2(2), FLASH_SECBB2(3), FLASH_SECBB2(4)  /* bank 2 SECBB register offsets */
+			FLASH_SECBB1(5), FLASH_SECBB1(6), FLASH_SECBB1(7), FLASH_SECBB1(8),
+			FLASH_SECBB2(1), FLASH_SECBB2(2), FLASH_SECBB2(3), FLASH_SECBB2(4), /* bank 2 SECBB register offsets */
+			FLASH_SECBB2(5), FLASH_SECBB2(6), FLASH_SECBB2(7), FLASH_SECBB2(8)
 	};
-
 
 	unsigned int num_secbb_regs = ARRAY_SIZE(secbb_regs);
 
@@ -1224,8 +1241,7 @@ static int stm32l4_erase(struct flash_bank *bank, unsigned int first,
 	 */
 
 	for (unsigned int i = first; i <= last; i++) {
-		uint32_t erase_flags;
-		erase_flags = FLASH_PER | FLASH_STRT;
+		uint32_t erase_flags = FLASH_PER | FLASH_STRT;
 
 		if (i >= stm32l4_info->bank1_sectors) {
 			uint8_t snb;
@@ -1703,7 +1719,7 @@ static int stm32l4_read_idcode(struct flash_bank *bank, uint32_t *id)
 	struct target *target = bank->target;
 
 	/* try reading possible IDCODE registers, in the following order */
-	uint32_t dbgmcu_idcode[] = {DBGMCU_IDCODE_L4_G4, DBGMCU_IDCODE_G0, DBGMCU_IDCODE_L5};
+	uint32_t dbgmcu_idcode[] = {DBGMCU_IDCODE_L4_G4, DBGMCU_IDCODE_L5, DBGMCU_IDCODE_G0};
 
 	for (unsigned int i = 0; i < ARRAY_SIZE(dbgmcu_idcode); i++) {
 		retval = target_read_u32(target, dbgmcu_idcode[i], id);
@@ -2055,12 +2071,7 @@ static int stm32l4_probe(struct flash_bank *bank)
 		break;
 	case DEVID_STM32U59_U5AXX:
 	case DEVID_STM32U57_U58XX:
-		/* if flash size is more than 1M the device is always dual bank
-		 * otherwise check DUALBANK bit
-		 *
-		 * FIXME: for STM32U59 : not sure about 2MB variants if they exist,
-		 * and if they are contiguous in dual bank mode
-		 */
+	case DEVID_STM32U53_U54XX:
 		page_size_kb = 8;
 		num_pages = flash_size_kb / page_size_kb;
 		stm32l4_info->bank1_sectors = num_pages;
