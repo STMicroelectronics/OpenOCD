@@ -1664,6 +1664,39 @@ err_lock:
 	return retval2;
 }
 
+int stm32l4_read(struct flash_bank *bank,
+	uint8_t *buffer, uint32_t offset, uint32_t count)
+{
+	struct stm32l4_flash_bank *stm32l4_info = bank->driver_priv;
+	int retval;
+
+	if (bank->target->state != TARGET_HALTED) {
+		LOG_ERROR("Target not halted");
+		return ERROR_TARGET_NOT_HALTED;
+	}
+
+	if (stm32l4_info->tzen) {
+		/* set all FLASH pages as secure */
+		retval = stm32l4_set_secbb(bank, FLASH_SECBB_SECURE);
+		if (retval != ERROR_OK) {
+			/* restore all FLASH pages as non-secure */
+			stm32l4_set_secbb(bank, FLASH_SECBB_NON_SECURE); /* ignore the return value */
+			return retval;
+		}
+	}
+
+	int retval2 = target_read_buffer(bank->target, offset + bank->base, count, buffer);
+
+	if (stm32l4_info->tzen) {
+		/* restore all FLASH pages as non-secure */
+		retval= stm32l4_set_secbb(bank, FLASH_SECBB_NON_SECURE);
+		if (retval != ERROR_OK)
+			return retval;
+	}
+
+	return retval2;
+}
+
 static int stm32l4_read_idcode(struct flash_bank *bank, uint32_t *id)
 {
 	int retval = ERROR_OK;
@@ -2647,7 +2680,7 @@ const struct flash_driver stm32l4x_flash = {
 	.erase = stm32l4_erase,
 	.protect = stm32l4_protect,
 	.write = stm32l4_write,
-	.read = default_flash_read,
+	.read = stm32l4_read,
 	.probe = stm32l4_probe,
 	.auto_probe = stm32l4_auto_probe,
 	.erase_check = default_flash_blank_check,
