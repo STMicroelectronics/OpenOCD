@@ -1129,7 +1129,7 @@ int dap_put_ap(struct adiv5_ap *ap)
 	return ERROR_OK;
 }
 
-static int dap_get_debugbase(struct adiv5_ap *ap,
+int dap_get_debugbase(struct adiv5_ap *ap,
 			target_addr_t *dbgbase, uint32_t *apid)
 {
 	struct adiv5_dap *dap = ap->dap;
