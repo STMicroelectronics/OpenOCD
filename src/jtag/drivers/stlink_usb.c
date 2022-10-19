@@ -4605,7 +4605,7 @@ static int stlink_usb_cnt_buf_rw_queue(const struct dap_queue *q, unsigned int l
 
 static int stlink_usb_mem_rw_queue(void *handle, const struct dap_queue *q, unsigned int len, unsigned int *skip)
 {
-	unsigned int cnt, misc_items;
+	unsigned int cnt, misc_items = 0;
 	int retval;
 
 	unsigned int cnt_misc = stlink_usb_cnt_misc_rw_queue(handle, q, len, &misc_items);
