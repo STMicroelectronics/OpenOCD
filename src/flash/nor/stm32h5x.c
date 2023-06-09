@@ -102,11 +102,11 @@ static const char *supported_devices_desc = "STM32H5x";
 #define NO_MORE_REVS { 0x0, NULL }
 
 static const struct stm32h5x_rev stm32h50xx_revs[] = {
-	{ 0x1000, "A" }, NO_MORE_REVS
+	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1002, "Y" }, NO_MORE_REVS
 };
 
 static const struct stm32h5x_rev stm32h56_h57xx_revs[] = {
-	{ 0x1000, "A" }, NO_MORE_REVS
+	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1007, "X" }, NO_MORE_REVS
 };
 
 /* Devices identities */
