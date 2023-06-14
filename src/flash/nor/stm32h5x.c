@@ -14,7 +14,6 @@
 #include <target/algorithm.h>
 #include <target/cortex_m.h>
 #include <target/arm_adi_v5.h>
-#include <target/arm_coresight.h>
 #include "stm32h5x.h"
 
 
@@ -102,7 +101,7 @@ static const char *supported_devices_desc = "STM32H5x";
 #define NO_MORE_REVS { 0x0, NULL }
 
 static const struct stm32h5x_rev stm32h50xx_revs[] = {
-	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1002, "Y" }, NO_MORE_REVS
+	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1003, "Y" }, NO_MORE_REVS
 };
 
 static const struct stm32h5x_rev stm32h56_h57xx_revs[] = {
@@ -387,7 +386,6 @@ static int stm32h5x_set_secbb(struct flash_bank *bank, uint32_t value)
 			FLASH_SECBB1(1), FLASH_SECBB1(2), FLASH_SECBB1(3), FLASH_SECBB1(4), /* bank 1 SECBB register offsets */
 			FLASH_SECBB2(1), FLASH_SECBB2(2), FLASH_SECBB2(3), FLASH_SECBB2(4)  /* bank 2 SECBB register offsets */
 	};
-
 
 	unsigned int num_secbb_regs = ARRAY_SIZE(secbb_regs);
 
@@ -764,7 +762,7 @@ static int stm32h5x_write_block_fast(struct flash_bank *bank, const uint8_t *buf
 	assert(FLASH_DATA_WIDTH % 8 == 0);
 	const size_t extra_size = sizeof(struct stm32h5x_work_area);
 	uint32_t buffer_size = target_get_working_area_avail(target) - extra_size;
-	/* buffer_size should be multiple of stm32l4_info->data_width */
+	/* buffer_size should be multiple of stm32h5_info->data_width */
 	buffer_size &= ~(FLASH_DATA_WIDTH - 1);
 
 	if (buffer_size < 256) {
@@ -784,11 +782,11 @@ static int stm32h5x_write_block_fast(struct flash_bank *bank, const uint8_t *buf
 	armv7m_info.common_magic = ARMV7M_COMMON_MAGIC;
 	armv7m_info.core_mode = ARM_MODE_THREAD;
 
-	/* contrib/loaders/flash/stm32/stm32l4x.c:write() arguments */
-	init_reg_param(&reg_params[0], "r0", 32, PARAM_IN_OUT);	/* stm32l4_work_area ptr , status (out) */
+	/* contrib/loaders/flash/stm32/stm32h5x.c:write() arguments */
+	init_reg_param(&reg_params[0], "r0", 32, PARAM_IN_OUT);	/* stm32h5_work_area ptr , status (out) */
 	init_reg_param(&reg_params[1], "r1", 32, PARAM_OUT);	/* buffer end */
 	init_reg_param(&reg_params[2], "r2", 32, PARAM_OUT);	/* target address */
-	init_reg_param(&reg_params[3], "r3", 32, PARAM_OUT);	/* count (of stm32l4_info->data_width) */
+	init_reg_param(&reg_params[3], "r3", 32, PARAM_OUT);	/* count (of stm32h5_info->data_width) */
 
 	buf_set_u32(reg_params[0].value, 0, 32, source->address);
 	buf_set_u32(reg_params[1].value, 0, 32, source->address + source->size);
@@ -885,7 +883,6 @@ static int stm32h5x_write_block_slow(struct flash_bank *bank, const uint8_t *buf
 	if (retval != ERROR_OK)
 		return retval;
 
-
 	/* write directly to flash memory */
 	const uint8_t *src = buffer;
 	const uint32_t data_width_in_words = FLASH_DATA_WIDTH / 4;
@@ -899,6 +896,7 @@ static int stm32h5x_write_block_slow(struct flash_bank *bank, const uint8_t *buf
 		if (retval != ERROR_OK)
 			return retval;
 
+		keep_alive();
 		src += FLASH_DATA_WIDTH;
 		address += FLASH_DATA_WIDTH;
 	}
@@ -944,14 +942,19 @@ static int stm32h5x_write(struct flash_bank *bank, const uint8_t *buffer,
 	if (retval != ERROR_OK)
 		goto err_lock;
 
-	/* first try to write using the loader, for better performance */
-	retval = stm32h5x_write_block_fast(bank, buffer, offset, count / FLASH_DATA_WIDTH);
+	if (stm32h5x_bank->tzen == TZEN_ENABLED && stm32h5x_bank->pstate != PSTATE_OPEN) {
+		LOG_INFO("TZ On and PState not OPEN: programming without flash loader (slower)");
+		retval = stm32h5x_write_block_slow(bank, buffer, offset, count / FLASH_DATA_WIDTH);
+	} else {
+		/* write using the loader, for better performance */
+		retval = stm32h5x_write_block_fast(bank, buffer, offset, count / FLASH_DATA_WIDTH);
 
-	/* if resources are not available write without a loader */
-	if (retval == ERROR_TARGET_RESOURCE_NOT_AVAILABLE) {
-		LOG_WARNING("falling back to programming without a flash loader (slower)");
-		retval = stm32h5x_write_block_slow(bank, buffer, offset,
-				count / FLASH_DATA_WIDTH);
+		/* if resources are not available write without a loader */
+		if (retval == ERROR_TARGET_RESOURCE_NOT_AVAILABLE) {
+			LOG_WARNING("falling back to programming without a flash loader (slower)");
+			retval = stm32h5x_write_block_slow(bank, buffer, offset,
+					count / FLASH_DATA_WIDTH);
+		}
 	}
 
 err_lock:
@@ -1006,37 +1009,15 @@ int stm32h5x_read(struct flash_bank *bank,
 
 static int stm32h5x_read_idcode(struct flash_bank *bank, uint32_t *id)
 {
+	int retval = ERROR_OK;
 	struct target *target = bank->target;
-	struct cortex_m_common *cortex_m = target_to_cm(bank->target);
-	struct adiv5_ap *ap = cortex_m->armv7m.debug_ap;
 
-	/* DBGMCU_IDCODE cannot be read from AP1, read it from ROM Table */
-	target_addr_t dbgbase;
-	uint32_t apid;
-	int retval = dap_get_debugbase(ap, &dbgbase, &apid);
-	if (retval != ERROR_OK)
-		return retval;
+	/* read stm32 device id register */
+	retval = target_read_u32(target, DBGMCU_IDCODE, id);
 
-	target_addr_t base_addr = dbgbase & 0xFFFFFFFFFFFFF000ull;
-
-	/* PID Registers 0 to 3 are sufficient to identify the device */
-	uint32_t pid_regs[4];
-
-	retval = target_read_memory(target, base_addr + ARM_CS_PIDR0, 4, 4, (uint8_t *)pid_regs);
-	if (retval != ERROR_OK)
-		return retval;
-
-	uint64_t pid = (pid_regs[3] & 0xff) << 24
-					| (pid_regs[2] & 0xff) << 16
-					| (pid_regs[1] & 0xff) << 8
-					| (pid_regs[0] & 0xff);
-
-	uint16_t dev_id = pid & 0x0FFF;
-	uint8_t rev_id_major = pid >> 20 & 0xF;
-	uint8_t rev_id_minor = pid >> 28 & 0xF;
-	uint16_t rev_id = rev_id_major << 12 | rev_id_minor;
-
-	*id = rev_id << 16 | dev_id;
+	if (retval != ERROR_OK) {
+		LOG_ERROR("can't get the device id");
+	}
 
 	return retval;
 }

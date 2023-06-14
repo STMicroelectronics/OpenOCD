@@ -8,7 +8,7 @@
 #ifndef OPENOCD_FLASH_NOR_STM32H5X
 #define OPENOCD_FLASH_NOR_STM32H5X
 
-/* IMPORTANT: this file is included by stm32l4x driver and flashloader,
+/* IMPORTANT: this file is included by stm32h5x driver and flashloader,
  * so please when changing this file, do not forget to check the flashloader */
 
 /* #include "helper/bits.h" causes build errors when compiling
@@ -37,6 +37,9 @@
 
 #define FLASH_SECBB_SECURE      0xFFFFFFFF
 #define FLASH_SECBB_NON_SECURE  0
+
+/* IDCODE register address */
+#define DBGMCU_IDCODE			0x44024000
 
 /* FLASH_OPTCR register bits */
 #define FLASH_OPTLOCK		BIT(0)
@@ -110,10 +113,10 @@ struct stm32h5x_work_area {
 	} params;
 	uint8_t stack[LDR_STACK_SIZE];
 	struct flash_async_algorithm_circbuf {
-		/* note: stm32l4_work_area struct is shared between the loader
-		 * and stm32l4x flash driver.
+		/* note: stm32h5x_work_area struct is shared between the loader
+		 * and stm32h5x flash driver.
 		 *
-		 * '*wp' and '*rp' pointers' size is 4 bytes each since stm32l4x
+		 * '*wp' and '*rp' pointers' size is 4 bytes each since stm32h5x
 		 * devices have 32-bit processors.
 		 * however when used in openocd code, their size depends on the host
 		 *   if the host is 32-bit, then the size is 4 bytes each.
