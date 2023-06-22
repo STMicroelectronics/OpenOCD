@@ -36,7 +36,7 @@
 
 /* stldr functions timeouts in milliseconds */
 #define STLDR_INIT_TIMEOUT              100000
-#define STLDR_SECTOR_ERASE_TIMEOUT      10000
+#define STLDR_SECTOR_ERASE_TIMEOUT      1000000
 #define STLDR_MASS_ERASE_INT_TIMEOUT    10000    /* for MCU internal flash */
 #define STLDR_MASS_ERASE_EXT_TIMEOUT    600000   /* for other (external) flash types */
 #define STLDR_READ_TIMEOUT              1000
