@@ -22,6 +22,7 @@ struct mem_ap {
 	struct adiv5_dap *dap;
 	struct adiv5_ap *ap;
 	uint64_t ap_num;
+	uint64_t parent;
 };
 
 static int mem_ap_target_create(struct target *target, Jim_Interp *interp)
@@ -45,6 +46,7 @@ static int mem_ap_target_create(struct target *target, Jim_Interp *interp)
 	}
 
 	mem_ap->ap_num = pc->ap_num;
+	mem_ap->parent = pc->parent;
 	mem_ap->common_magic = MEM_AP_COMMON_MAGIC;
 	mem_ap->dap = pc->dap;
 
@@ -134,6 +136,7 @@ static int mem_ap_assert_reset(struct target *target)
 static int mem_ap_examine(struct target *target)
 {
 	struct mem_ap *mem_ap = target->arch_info;
+	char *axifound;
 
 	if (!target_was_examined(target)) {
 		if (!mem_ap->ap) {
@@ -143,9 +146,16 @@ static int mem_ap_examine(struct target *target)
 				return ERROR_FAIL;
 			}
 		}
+
+		axifound = strstr(target->cmd_name, ".axi");
+		if (axifound != NULL) {
+			mem_ap->ap->csw_default = CSW_AXI_DEFAULT;
+		}
+
 		target_set_examined(target);
 		target->state = TARGET_UNKNOWN;
 		target->debug_reason = DBG_REASON_UNDEFINED;
+		mem_ap->ap->parent = mem_ap->parent;
 		return mem_ap_init(mem_ap->ap);
 	}
 

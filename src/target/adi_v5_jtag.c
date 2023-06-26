@@ -31,7 +31,7 @@
 #include <helper/list.h>
 #include <jtag/swd.h>
 
-/*#define DEBUG_WAIT*/
+#define DEBUG_WAIT    0
 
 /* JTAG instructions/registers for JTAG-DP and SWJ-DP */
 #define JTAG_DP_ABORT		0xF8
@@ -47,7 +47,7 @@
 
 static int jtag_ap_q_abort(struct adiv5_dap *dap, uint8_t *ack);
 
-#ifdef DEBUG_WAIT
+#if ( DEBUG_WAIT == 1 )
 static const char *dap_reg_name(struct adiv5_dap *dap, uint8_t instr, uint16_t reg_addr)
 {
 	char *reg_name = "UNK";
@@ -133,7 +133,7 @@ struct dap_cmd_pool {
 
 static void log_dap_cmd(struct adiv5_dap *dap, const char *header, struct dap_cmd *el)
 {
-#ifdef DEBUG_WAIT
+#if ( DEBUG_WAIT == 1 )
 	const char *ack;
 	switch (el->ack) {
 	case JTAG_ACK_WAIT:         /* ADIv5 and ADIv6 */

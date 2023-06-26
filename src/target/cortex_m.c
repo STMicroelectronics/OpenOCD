@@ -20,6 +20,7 @@
 
 #include "jtag/interface.h"
 #include "breakpoints.h"
+#include <target/algorithm.h>
 #include "cortex_m.h"
 #include "target_request.h"
 #include "target_type.h"
@@ -32,6 +33,7 @@
 #include <helper/nvp.h>
 #include <helper/time_support.h>
 #include <rtt/rtt.h>
+#include "../../contrib/loaders/flash/sr5/sr5.inc"
 
 /* NOTE:  most of this should work fine for the Cortex-M1 and
  * Cortex-M0 cores too, although they're ARMv6-M not ARMv7-M.
@@ -3014,6 +3016,170 @@ COMMAND_HANDLER(handle_cortex_m_reset_config_command)
 	return ERROR_OK;
 }
 
+
+COMMAND_HANDLER(cortex_m_ram_fill)
+{
+	struct target *target = get_current_target(CMD_CTX);
+	struct cortex_m_common *cortex_m = target_to_cm(target);
+	struct armv7m_common *armv7m = target_to_armv7m(target);
+	struct working_area *fill_algorithm;
+	struct reg_param reg_params[5];
+	struct armv7m_algorithm armv7m_algorithm_info;
+	int retval;
+	int err;
+	unsigned int i;
+
+	const unsigned int num_regs = armv7m->arm.core_cache->num_regs;
+	uint32_t scratch_registers[num_regs];
+	uint8_t *memory_backup;
+
+	uint32_t fill_value;
+
+	err = ERROR_OK;
+
+	/* Set arch info */
+	armv7m_algorithm_info.common_magic = ARMV7M_COMMON_MAGIC;
+
+
+	retval = cortex_m_verify_pointer(CMD, cortex_m);
+	if (retval != ERROR_OK)
+		return retval;
+
+	if (target->state != TARGET_HALTED) {
+		command_print(CMD, "target must be stopped for \"%s\" command", CMD_NAME);
+		return ERROR_OK;
+	}
+
+	/* with only two parameters fill value = 0 */
+	if (CMD_ARGC < 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	else if (CMD_ARGC == 2)
+		fill_value = 0x0;
+	else
+		COMMAND_PARSE_NUMBER(u32, CMD_ARGV[2], fill_value);
+
+	uint32_t start_address;
+	uint32_t lenght;
+	uint32_t end_address;
+
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[0], start_address);
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[1], lenght);
+
+	if ((lenght % 64) || (start_address & 0x3u))
+	{
+		command_print(CMD, "Start address must be 4 bytes aligned and length must multiple of 64 bytes ");
+		return ERROR_OK;
+	}
+
+	end_address = start_address + lenght;
+
+	if (((start_address >= target->working_area_phys) && (start_address < target->working_area_phys + target->working_area_size - 1)) || ((end_address >= target->working_area_phys) && (end_address < target->working_area_phys + target->working_area_size - 1)))
+	{
+		command_print(CMD, "ram_fill can't be used to fill RAM used as working area");
+		return ERROR_OK;
+	}
+
+	/* Read scratch registers  and save them */
+	for (i = 0; i < num_regs; i++) {
+		scratch_registers[i] = buf_get_u32(
+				armv7m->arm.core_cache->reg_list[i].value,
+				0,
+				32);
+	}
+
+	/* RAM fill code */
+	if (target_alloc_working_area(target, sizeof(cortex_m_ram_fill_code),
+			&fill_algorithm) != ERROR_OK) {
+		LOG_WARNING("no working area available, can't do flash init step");
+		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
+	}
+
+	memory_backup = (uint8_t *) malloc(fill_algorithm->size);
+	cortex_m_read_memory(target, fill_algorithm->address, 2, fill_algorithm->size / 2, memory_backup);
+
+	err = target_write_buffer(target, fill_algorithm->address,
+			sizeof(cortex_m_ram_fill_code), (uint8_t *)cortex_m_ram_fill_code);
+	if (err != ERROR_OK) {
+		target_free_working_area(target, fill_algorithm);
+		return err;
+	}
+
+	/* start_address */
+	init_reg_param(&reg_params[0], "r0", 32, PARAM_IN_OUT);
+	buf_set_u32(reg_params[0].value, 0, 32, start_address);
+
+	/* end_address */
+	init_reg_param(&reg_params[1], "r1", 32, PARAM_IN_OUT);
+	buf_set_u32(reg_params[1].value, 0, 32, end_address);
+
+	/* fill value */
+	init_reg_param(&reg_params[2], "r2", 32, PARAM_IN_OUT);
+	buf_set_u32(reg_params[2].value, 0, 32, fill_value);
+
+
+	/*
+	 * Link register (in).
+	 * Set link register to the breakpoint instruction at the end of the buffer.
+	 * We use a software breakpoint to notify when done with algorithm execution.
+	 */
+	init_reg_param(&reg_params[3], "lr", 32, PARAM_IN);
+	buf_set_u32(reg_params[3].value, 0, 32, (fill_algorithm->address + (sizeof(cortex_m_ram_fill_code) - 2)) | 0x1);
+
+	/*
+	* Stack Pointer (in).
+	*/
+	init_reg_param(&reg_params[4], "sp", 32, PARAM_IN_OUT);
+	buf_set_u32(reg_params[4].value, 0, 32, target->working_area_phys + target->working_area_size - 1);
+
+
+	err = target_run_algorithm(target,
+			0, NULL,
+			5, reg_params,
+			fill_algorithm->address, 0,
+			1000, &armv7m_algorithm_info);
+
+	if (err != ERROR_OK)  {
+		err = ERROR_TARGET_FAILURE;
+	}
+
+	cortex_m_write_memory(target, fill_algorithm->address, 2, fill_algorithm->size / 2, memory_backup);
+
+	/* Free resources */
+	target_free_working_area(target, fill_algorithm);
+
+	destroy_reg_param(&reg_params[0]);
+	destroy_reg_param(&reg_params[1]);
+	destroy_reg_param(&reg_params[2]);
+	destroy_reg_param(&reg_params[3]);
+	destroy_reg_param(&reg_params[4]);
+
+	/* Restore scratch registers */
+
+
+
+	for (i = 0; i < num_regs; i++)
+	{
+		if (buf_get_u32(armv7m->arm.core_cache->reg_list[i].value, 0, 32) != scratch_registers[i])
+		{
+			/* Restore original context */
+			LOG_DEBUG("restoring register %s with value 0x%8.8" PRIx32,
+					armv7m->arm.core_cache->reg_list[i].name,
+				scratch_registers[i]);
+
+
+			armv7m->arm.core_cache->reg_list[i].valid = 1;
+			armv7m->arm.core_cache->reg_list[i].dirty = 1;
+		}
+		else
+		{
+			armv7m->arm.core_cache->reg_list[i].valid = 1;
+			armv7m->arm.core_cache->reg_list[i].dirty = 0;
+		}
+		buf_set_u32(armv7m->arm.core_cache->reg_list[i].value, 0, 32, scratch_registers[i]);
+	}
+	return err;
+}
+
 static const struct command_registration cortex_m_exec_command_handlers[] = {
 	{
 		.name = "maskisr",
@@ -3062,6 +3228,13 @@ static const struct command_registration cortex_m_command_handlers[] = {
 	},
 	{
 		.chain = rtt_target_command_handlers,
+	},
+	{
+			.name = "ram_fill",
+			.handler = cortex_m_ram_fill,
+			.mode = COMMAND_EXEC,
+			.usage = "ram_fill start_addr size_kb [value_32bit]",
+			.help = "fill range of ram with 0x0",
 	},
 	COMMAND_REGISTRATION_DONE
 };

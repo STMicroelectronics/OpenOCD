@@ -158,9 +158,10 @@
 
 /* Fields of the MEM-AP's CSW register */
 #define CSW_SIZE_MASK		7
-#define CSW_8BIT		0
-#define CSW_16BIT		1
-#define CSW_32BIT		2
+#define CSW_8BIT			0
+#define CSW_16BIT			1
+#define CSW_32BIT			2
+#define CSW_64BIT			3
 #define CSW_ADDRINC_MASK    (3UL << 4)
 #define CSW_ADDRINC_OFF     0UL
 #define CSW_ADDRINC_SINGLE  (1UL << 4)
@@ -189,8 +190,11 @@
 #define CSW_AXI_ARPROT0_PRIV    (1UL << 28)
 /* AXI: Non-secure */
 #define CSW_AXI_ARPROT1_NONSEC  (1UL << 29)
+/* AXI: type */
+#define CSW_AXI_TYPE        (11UL << 13)
+
 /* AXI: initial value of csw_default */
-#define CSW_AXI_DEFAULT         (CSW_AXI_ARPROT0_PRIV | CSW_AXI_ARPROT1_NONSEC | CSW_DBGSWENABLE)
+#define CSW_AXI_DEFAULT         (CSW_AXI_ARPROT0_PRIV | CSW_AXI_ARPROT1_NONSEC | CSW_DBGSWENABLE | CSW_AXI_TYPE)
 
 /* APB: initial value of csw_default */
 #define CSW_APB_DEFAULT         (CSW_DBGSWENABLE)
@@ -236,11 +240,38 @@ enum swd_special_seq {
 	DORMANT_TO_JTAG,
 };
 
+
+/**
+ * Transport-neutral representation of AP read/write transactions, supporting
+ * both DAP and MEM-AP.
+ */
+struct ap_ops {
+	/* AP to use */
+	struct adiv5_ap *ap;
+
+	/* Offset to apply in case of MEM-AP. Zero in case of DAP */
+	uint64_t offset;
+
+	/** AP read. */
+	int (*ap_read)(struct adiv5_ap *ap,
+			target_addr_t address, uint32_t *value);
+
+	/** AP write. */
+	int (*ap_write)(struct adiv5_ap *ap,
+			target_addr_t reg, uint32_t data);
+};
+
+
 /**
  * This represents an ARM Debug Interface (v5) Access Port (AP).
  * Most common is a MEM-AP, for memory access.
  */
 struct adiv5_ap {
+	/**
+	 * AP read/write operations.
+	 */
+	struct ap_ops ops;
+
 	/**
 	 * DAP this AP belongs to.
 	 */
@@ -252,6 +283,13 @@ struct adiv5_ap {
 	 * TODO: to be more coherent, it should be renamed apsel
 	 */
 	uint64_t ap_num;
+
+	/**
+	 * ADIv5: Number of parent AP (0~255)
+	 * ADIv6: Base address of parent AP, if any (4k aligned)
+	 * TODO: to be more coherent, it should be renamed apsel
+	 */
+	uint64_t parent;
 
 	/**
 	 * Default value for (MEM-AP) AP_REG_CSW register.
@@ -574,6 +612,58 @@ static inline int dap_queue_ap_write(struct adiv5_ap *ap,
 	return ap->dap->ops->queue_ap_write(ap, reg, data);
 }
 
+
+/**
+ * Queue an AP register read.
+ *
+ * @param ap The AP used for reading.
+ * @param reg The number of the AP register being read.
+ * @param data Pointer saying where to store the register's value
+ * (in host endianness).
+ *
+ * @return ERROR_OK for success, else a fault code.
+ */
+static inline int dap_ap_read_atomic(struct adiv5_ap *ap,
+		unsigned reg, uint32_t *data)
+{
+	assert(ap->dap->ops);
+	if (ap->refcount == 0) {
+		ap->refcount = 1;
+		LOG_ERROR("BUG: refcount AP#%" PRIu64 " used without get", ap->ap_num);
+	}
+
+	int retval = ap->dap->ops->queue_ap_read(ap, reg, data);
+	if (retval != ERROR_OK)
+		return retval;
+
+	return ap->dap->ops->run(ap->dap);
+}
+
+/**
+ * Queue an AP register write.
+ *
+ * @param ap The AP used for writing.
+ * @param reg The number of the AP register being written.
+ * @param data Value being written (host endianness)
+ *
+ * @return ERROR_OK for success, else a fault code.
+ */
+static inline int dap_ap_write_atomic(struct adiv5_ap *ap,
+		unsigned reg, uint32_t data)
+{
+	assert(ap->dap->ops);
+	if (ap->refcount == 0) {
+		ap->refcount = 1;
+		LOG_ERROR("BUG: refcount AP#0x%" PRIx64 " used without get", ap->ap_num);
+	}
+
+	int retval = ap->dap->ops->queue_ap_write(ap, reg, data);
+	if (retval != ERROR_OK)
+		return retval;
+
+	return ap->dap->ops->run(ap->dap);
+}
+
 /**
  * Queue an AP abort operation.  The current AP transaction is aborted,
  * including any update of the transaction counter.  The AP is left in
@@ -740,6 +830,7 @@ extern int dap_cleanup_all(void);
 
 struct adiv5_private_config {
 	uint64_t ap_num;
+	uint64_t parent;
 	struct adiv5_dap *dap;
 };
 
@@ -749,6 +840,7 @@ extern int adiv5_jim_configure(struct target *target, struct jim_getopt_info *go
 struct adiv5_mem_ap_spot {
 	struct adiv5_dap *dap;
 	uint64_t ap_num;
+	uint64_t parent;
 	uint32_t base;
 };
 

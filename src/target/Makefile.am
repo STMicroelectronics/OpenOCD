@@ -29,7 +29,8 @@ noinst_LTLIBRARIES += %D%/libtarget.la
 	%D%/dsp5680xx.c \
 	%D%/hla_target.c \
 	$(ARMV8_SRC) \
-	$(MIPS64_SRC)
+	$(MIPS64_SRC) \
+	$(POWERPC_SRC)
 
 if HAVE_CAPSTONE
 %C%_libtarget_la_CPPFLAGS += $(CAPSTONE_CFLAGS)
@@ -132,6 +133,8 @@ MIPS64_SRC = \
 	%D%/mips_mips64.c \
 	%D%/trace.c \
 	%D%/mips_ejtag.c
+POWERPC_SRC = \
+	%D%/powerpc.c
 
 STM8_SRC = \
 	%D%/stm8.c
