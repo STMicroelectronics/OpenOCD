@@ -2,44 +2,14 @@
 #include "config.h"
 #endif
 
+#include <stdbool.h>
+#include <stdint.h>
 #include "imp.h"
 #include <helper/binarybuffer.h>
 #include <target/algorithm.h>
 #include <target/powerpc.h>
 
 
-/*************************************************************************/
-/*  SSD general data types                                               */
-/*************************************************************************/
-
-#ifndef FALSE
-#define FALSE 0
-#endif
-
-#ifndef TRUE
-#define TRUE (!FALSE)
-#endif
-
-/*
-typedef unsigned char BOOL;
-
-typedef signed char INT8;
-typedef unsigned char UINT8;
-typedef volatile signed char VINT8;
-typedef volatile unsigned char VUINT8;
-
-typedef signed short INT16;
-typedef unsigned short UINT16;
-typedef volatile signed short VINT16;
-typedef volatile unsigned short VUINT16;
-
-typedef signed int INT32;
-typedef unsigned int UINT32;
-typedef volatile signed int VINT32;
-typedef volatile unsigned int VUINT32;
-
-#define ASM_KEYWORD __asm
-*/
 /*************************************************************************/
 /*                  Offsets of C55 Control Registers                     */
 /*************************************************************************/
@@ -204,12 +174,12 @@ typedef volatile unsigned int VUINT32;
 #define NULL_POINTER                ((void *)0xFFFFFFFF)
 
 /* Macros for Accessing the Registers */
-#define C55_REG_BIT_SET(address, mask)        (*(VUINT32*)(address) |= (mask))
-#define C55_REG_BIT_CLEAR(address, mask)      (*(VUINT32*)(address) &= ~(mask))
-#define C55_REG_BIT_TEST(address, mask)       (*(VUINT32*)(address) & (mask))
-#define C55_REG_WRITE(address, value)         (*(VUINT32*)(address) = (value))
-#define C55_REG_READ(address)                 ((UINT32)(*(VUINT32*)(address)))
-#define C55_GET_BIT(value, position)          (UINT8)(((value) >> (position)) & 0x01)
+#define C55_REG_BIT_SET(address, mask)        (*(uint32_t*)(address) |= (mask))
+#define C55_REG_BIT_CLEAR(address, mask)      (*(uint32_t*)(address) &= ~(mask))
+#define C55_REG_BIT_TEST(address, mask)       (*(uint32_t*)(address) & (mask))
+#define C55_REG_WRITE(address, value)         (*(uint32_t*)(address) = (value))
+#define C55_REG_READ(address)                 ((uint32_t)(*(uint32_t*)(address)))
+#define C55_GET_BIT(value, position)          (uint8_t)(((value) >> (position)) & 0x01)
 
 /* Set/Clear C55-MCR bits without affecting MCR-EER, MCR-RWE, and MCR-SBC */
 #define C55_MCR_BIT_SET(MCRAddress, mask)      \
@@ -266,10 +236,10 @@ typedef volatile unsigned int VUINT32;
 
 typedef struct _c55_block_info
 {
-    UINT32 n16KBlockNum;         /* Number of 16K blocks */
-    UINT32 n32KBlockNum;         /* Number of 32K blocks */
-    UINT32 n64KBlockNum;         /* Number of 64K blocks */
-    UINT32 n128KBlockNum;        /* Number of 128K blocks */
+    uint32_t n16KBlockNum;         /* Number of 16K blocks */
+    uint32_t n32KBlockNum;         /* Number of 32K blocks */
+    uint32_t n64KBlockNum;         /* Number of 64K blocks */
+    uint32_t n128KBlockNum;        /* Number of 128K blocks */
 
 } BLOCK_INFO, *PBLOCK_INFO;
 
@@ -277,46 +247,46 @@ typedef struct _c55_block_info
 /* SSD Configuration Structure */
 typedef struct _c55_ssd_config
 {
-    UINT32 c55RegBase;           /* C55 control register base */
-    UINT32 mainArrayBase;        /* base of main array */
+    uint32_t c55RegBase;           /* C55 control register base */
+    uint32_t mainArrayBase;        /* base of main array */
     BLOCK_INFO lowBlockInfo;     /* blocks info of low address space */
     BLOCK_INFO midBlockInfo;     /* blocks info of mid address space */
     BLOCK_INFO highBlockInfo;    /* blocks info of high address space */
 
-	UINT32 nLargeBlockNum;        /* number of blocks in Large address space */
+	uint32_t nLargeBlockNum;        /* number of blocks in Large address space */
 
-	UINT32 uTestArrayBase;       /* base of UTEST array */
-    UINT8 mainInterfaceFlag;      /* interface flag indicate main or alternate interface */
-    UINT32 programmableSize;     /* programmable size */
-    UINT8 BDMEnable;              /* debug mode selection */
+	uint32_t uTestArrayBase;       /* base of UTEST array */
+    uint8_t mainInterfaceFlag;      /* interface flag indicate main or alternate interface */
+    uint32_t programmableSize;     /* programmable size */
+    uint8_t BDMEnable;              /* debug mode selection */
 } SSD_CONFIG, *PSSD_CONFIG;
 
 
 /* MISR structure */
 typedef struct _c55_misr
 {
-    UINT32 W0;
-    UINT32 W1;
-    UINT32 W2;
-    UINT32 W3;
-    UINT32 W4;
-    UINT32 W5;
-    UINT32 W6;
-    UINT32 W7;
-    UINT32 W8;
-    UINT32 W9;
+    uint32_t W0;
+    uint32_t W1;
+    uint32_t W2;
+    uint32_t W3;
+    uint32_t W4;
+    uint32_t W5;
+    uint32_t W6;
+    uint32_t W7;
+    uint32_t W8;
+    uint32_t W9;
 } MISR, *PMISR;
 
 /* Structure data for the context values */
 typedef struct _c55_context_data
 {
-    UINT32 dest;
-    UINT32 size;
-    UINT32 source;
-    UINT32 *pFailedAddress;
-    UINT32 *pFailedData;
-    UINT32 *pFailedSource;
-    UINT32 *pSum;
+    uint32_t dest;
+    uint32_t size;
+    uint32_t source;
+    uint32_t *pFailedAddress;
+    uint32_t *pFailedData;
+    uint32_t *pFailedSource;
+    uint32_t *pSum;
     PMISR pMisr;
     void* pReqCompletionFn;
 } CONTEXT_DATA, *PCONTEXT_DATA;
@@ -324,16 +294,16 @@ typedef struct _c55_context_data
 /* Block select structure for Large address space */
 typedef struct _c55_nLarge_block_sel
 {
-    UINT32 firstLargeBlockSelect;
-    UINT32 secondLargeBlockSelect;
+    uint32_t firstLargeBlockSelect;
+    uint32_t secondLargeBlockSelect;
 } NLARGE_BLOCK_SEL, *PNLARGE_BLOCK_SEL;
 
 
-typedef UINT32 (*PFLASHPROGRAM) ( PSSD_CONFIG pSSDConfig,
-                    BOOL factoryPgmFlag,
-                    UINT32 dest,
-                    UINT32 size,
-                    UINT32 source,
+typedef uint32_t (*PFLASHPROGRAM) ( PSSD_CONFIG pSSDConfig,
+                    bool factoryPgmFlag,
+                    uint32_t dest,
+                    uint32_t size,
+                    uint32_t source,
                     PCONTEXT_DATA pCtxData
                     );
 
@@ -603,10 +573,10 @@ typedef UINT32 (*PFLASHPROGRAM) ( PSSD_CONFIG pSSDConfig,
 #define FAIL  0
 #define PASS  (!FAIL)
 
-// BOOL Test_Result = FAIL;
+// bool Test_Result = FAIL;
 
 /* Prototype of error trap funciton */
-// static void ErrorTrap(UINT32 returnCode);
+// static void ErrorTrap(uint32_t returnCode);
 
 /* Typedef for null callback */
 typedef void (*tpfNullCallback)(void);
