@@ -9,7 +9,6 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-
 #include <helper/replacements.h>
 
 #ifdef HAVE_ELF_H
@@ -467,7 +466,7 @@ static int stldr_exec_function(struct flash_bank *bank, enum stldr_func_id func_
 		return ERROR_FAIL;
 	}
 
-	LOG_DEBUG("Running loader function %s(0x%" PRIx32 ", 0x%" PRIx32 ", 0x%" PRIx32 ", 0x%" PRIx32 ")",
+	LOG_INFO("Running loader function %s(0x%" PRIx32 ", 0x%" PRIx32 ", 0x%" PRIx32 ", 0x%" PRIx32 ")",
 		stldr_functions[func_id].name, args->arg_0, args->arg_1, args->arg_2, args->arg_3);
 
 	struct reg_param reg_params[6];
@@ -615,47 +614,53 @@ static int stldr_write(struct flash_bank *bank, const uint8_t *buffer,
 	struct stldr_flash_bank *stldr_info = bank->driver_priv;
 	struct stldr_dev_info *dev_info = &stldr_info->dev_info;
 
+	uint32_t buffer_size = target_get_working_area_avail(bank->target);
+	LOG_INFO("workarea size: %x", buffer_size);
+	LOG_INFO("workarea address: " TARGET_ADDR_FMT, bank->target->working_area_phys);
+
 	/* should be enforced via bank->write_start_alignment */
-	assert(!(offset % dev_info->page_size));
+	if (offset % dev_info->page_size)
+		LOG_INFO("ERROR offset and page not aligned %x %x", offset, dev_info->page_size);
 
 	/* should be enforced via bank->write_end_alignment */
-	assert(!(count % dev_info->page_size));
+	if (!(count % buffer_size))
+		LOG_INFO("ERROR count and buffer not aligned %x %x", count, buffer_size);
 
 	int retval = stldr_exec_function_init(bank);
 	if (retval != ERROR_OK)
 		return retval;
 
-	const uint32_t block_size = dev_info->page_size;
-
-	/* TODO: a hint when supporting relocatable loader
+	// TODO: a hint when supporting relocatable loader
 	struct working_area *source;
-	if (target_alloc_working_area_try(bank->target, block_size, &source)!= ERROR_OK) {
+	if (target_alloc_working_area_try(bank->target, buffer_size, &source) != ERROR_OK) {
 		LOG_WARNING("no large enough working area available");
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
 	}
-	*/
 
 	const uint32_t buffer_addr = ROUND_TO_DWORD(stldr_info->loader.end_addr + WRITE_BUFFER_OFFSET);
 	uint32_t address = bank->base + offset;
+
 	while (count > 0) {
-		retval = target_write_buffer(bank->target, buffer_addr, block_size, buffer);
+		if (count < buffer_size)
+			buffer_size = count;
+
+		retval = target_write_buffer(bank->target, buffer_addr, buffer_size, buffer);
 		if (retval != ERROR_OK)
 			goto exit_error;
 
-		retval = stldr_exec_function_write(bank, address, block_size, buffer_addr);
+		retval = stldr_exec_function_write(bank, address, buffer_size, buffer_addr);
 		if (retval != ERROR_OK)
 			goto exit_error;
 
-		buffer += block_size;
-		address += block_size;
-		count -= block_size;
+		buffer += buffer_size;
+		address += buffer_size;
+		count -= buffer_size;
 	}
-
-	/*target_free_working_area(bank->target, source);*/
+	target_free_working_area(bank->target, source);
 	return ERROR_OK;
 
 exit_error:
-	/*target_free_working_area(bank->target, source);*/
+	target_free_working_area(bank->target, source);
 	return ERROR_FLASH_OPERATION_FAILED;
 }
 
