@@ -935,6 +935,10 @@ int armv8_dpm_write_dirty_registers(struct arm_dpm *dpm, bool bpwp)
 				dpm->last_el != armv8_curel_from_core_mode(r->mode))
 			continue;
 
+		/* Special case: ARM_MODE_SYS has no SPSR at EL1 */
+		if (i == ARMV8_SPSR_EL1 && arm->core_mode == ARM_MODE_SYS)
+			continue;
+
 		retval = dpmv8_write_reg(dpm, &cache->reg_list[i], i);
 		if (retval != ERROR_OK)
 			break;

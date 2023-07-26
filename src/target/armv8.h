@@ -13,6 +13,7 @@
 #include "armv4_5_cache.h"
 #include "armv8_dpm.h"
 #include "arm_cti.h"
+#include <target/algorithm.h>
 
 enum {
 	ARMV8_R0 = 0,
@@ -99,8 +100,8 @@ enum {
 	ARMV8_SPSR_EL3 = 76,
 
 	/* Pseudo registers defined by GDB to remove the pauth signature. */
-	ARMV8_PAUTH_DMASK = 77,
-	ARMV8_PAUTH_CMASK = 78,
+//	ARMV8_PAUTH_DMASK = 77,
+//	ARMV8_PAUTH_CMASK = 78,
 
 	ARMV8_LAST_REG,
 };
@@ -110,6 +111,14 @@ enum run_control_op {
 	ARMV8_RUNCONTROL_RESUME = 1,
 	ARMV8_RUNCONTROL_HALT = 2,
 	ARMV8_RUNCONTROL_STEP = 3,
+};
+
+struct armv8_algorithm {
+	unsigned int common_magic;
+
+	enum arm_mode core_mode;
+
+	uint32_t context[ARMV8_LAST_REG]; /* ARMV8_NUM_REGS */
 };
 
 #define ARMV8_COMMON_MAGIC 0x0A450AAAU
@@ -238,6 +247,7 @@ target_to_armv8(struct target *target)
 	return container_of(target->arch_info, struct armv8_common, arm);
 }
 
+
 static inline bool is_armv8(struct armv8_common *armv8)
 {
 	return armv8->common_magic == ARMV8_COMMON_MAGIC;
@@ -334,5 +344,25 @@ int armv8_set_dbgreg_bits(struct armv8_common *armv8, unsigned int reg, unsigned
 extern void armv8_free_reg_cache(struct target *target);
 
 extern const struct command_registration armv8_command_handlers[];
+
+
+int armv8_run_algorithm(struct target *target,
+		int num_mem_params, struct mem_param *mem_params,
+		int num_reg_params, struct reg_param *reg_params,
+		target_addr_t entry_point, target_addr_t exit_point,
+		int timeout_ms, void *arch_info);
+
+int armv8_start_algorithm(struct target *target,
+		int num_mem_params, struct mem_param *mem_params,
+		int num_reg_params, struct reg_param *reg_params,
+		target_addr_t entry_point, target_addr_t exit_point,
+		void *arch_info);
+
+int armv8_wait_algorithm(struct target *target,
+		int num_mem_params, struct mem_param *mem_params,
+		int num_reg_params, struct reg_param *reg_params,
+		target_addr_t exit_point, int timeout_ms,
+		void *arch_info);
+
 
 #endif /* OPENOCD_TARGET_ARMV8_H */

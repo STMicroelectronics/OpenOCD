@@ -23,6 +23,7 @@
 #include "smp.h"
 #include <helper/nvp.h>
 #include <helper/time_support.h>
+#include "../../contrib/loaders/flash/sr6/sr6.inc"
 
 enum restart_mode {
 	RESTART_LAZY,
@@ -3082,6 +3083,221 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
 	return ERROR_OK;
 }
 
+
+COMMAND_HANDLER(armv8_ram_fill)
+{
+	struct target *target = get_current_target(CMD_CTX);
+
+	//struct aarch64_common *aarch64 = target_to_aarch64(target);
+	//struct armv8_common *armv8 = &aarch64->armv8_common;
+
+	struct working_area *fill_algorithm;
+	struct reg_param reg_params[5];
+	struct armv8_algorithm armv8_algorithm_info;
+	//int retval;
+	int err;
+	//unsigned int i;
+	//struct reg *r;
+
+
+	//const unsigned int num_regs = armv8->arm.core_cache->num_regs;
+	//uint32_t scratch_registers[num_regs];
+	uint8_t *memory_backup;
+
+	uint32_t fill_value;
+
+	err = ERROR_OK;
+
+	/* Set arch info */
+	armv8_algorithm_info.common_magic = ARMV8_COMMON_MAGIC;
+
+/*
+	retval = cortex_m_verify_pointer(CMD, cortex_m);
+	if (retval != ERROR_OK)
+		return retval;
+*/
+
+	if (target->state != TARGET_HALTED) {
+		command_print(CMD, "target must be stopped for \"%s\" command", CMD_NAME);
+		return ERROR_OK;
+	}
+
+	/* with only two parameters fill value = 0 */
+	if (CMD_ARGC < 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	else if (CMD_ARGC == 2)
+		fill_value = 0x0;
+	else
+		COMMAND_PARSE_NUMBER(u32, CMD_ARGV[2], fill_value);
+
+	uint32_t start_address;
+	uint32_t lenght;
+	uint32_t end_address;
+
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[0], start_address);
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[1], lenght);
+
+	if ((lenght % 64) || (start_address & 0x3u))
+	{
+		command_print(CMD, "Start address must be 4 bytes aligned and length must multiple of 64 bytes ");
+		return ERROR_OK;
+	}
+
+	end_address = start_address + lenght;
+
+	if (((start_address >= target->working_area_phys) && (start_address < target->working_area_phys + target->working_area_size - 1)) || ((end_address >= target->working_area_phys) && (end_address < target->working_area_phys + target->working_area_size - 1)))
+	{
+		command_print(CMD, "ram_fill can't be used to fill RAM used as working area");
+		return ERROR_OK;
+	}
+
+	/* Read scratch registers  and save them */
+/*
+	for (i = 0; i < num_regs; i++) {
+		scratch_registers[i] = buf_get_u32(
+				armv8->arm.core_cache->reg_list[i].value,
+				0,
+				32);
+	}
+*/
+/*
+	for (i = 0; i < num_regs ; i++) {
+
+		struct arm_reg *arm_reg;
+
+			r = armv8_reg_current(&armv8->arm, i);
+
+			// Skip reading FP-SIMD registers
+			if (r->number >= ARMV8_V0 && r->number <= ARMV8_FPCR)
+				continue;
+
+
+			// Only read registers that are available from the
+			// current EL (or core mode).
+
+			arm_reg = r->arch_info;
+			if (arm_reg->mode != ARM_MODE_ANY &&
+					armv8->dpm.last_el != armv8_curel_from_core_mode(arm_reg->mode))
+				continue;
+
+			/ Special case: ARM_MODE_SYS has no SPSR at EL1 *
+			if (r->number == ARMV8_SPSR_EL1 && armv8->arm.core_mode == ARM_MODE_SYS)
+				continue;
+
+			if (!r->exist || r->valid)
+			{
+				scratch_registers[i] = buf_get_u32(
+							armv8->arm.core_cache->reg_list[i].value,
+							0,
+							32);
+			}
+		}
+*/
+
+
+	/* RAM fill code */
+	if (target_alloc_working_area(target, sizeof(armv8_ram_fill_code),
+			&fill_algorithm) != ERROR_OK) {
+		LOG_WARNING("no working area available, can't do flash init step");
+		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
+	}
+
+	memory_backup = (uint8_t *) malloc(fill_algorithm->size);
+	aarch64_read_phys_memory(target, fill_algorithm->address, 2, fill_algorithm->size / 2, memory_backup);
+
+	err = target_write_buffer(target, fill_algorithm->address,
+			sizeof(armv8_ram_fill_code), (uint8_t *)armv8_ram_fill_code);
+	if (err != ERROR_OK) {
+		target_free_working_area(target, fill_algorithm);
+		return err;
+	}
+
+	/* start_address */
+	init_reg_param(&reg_params[0], "x0", 64, PARAM_IN_OUT);
+	buf_set_u32(reg_params[0].value, 0, 32, start_address);
+
+	/* end_address */
+	init_reg_param(&reg_params[1], "x1", 64, PARAM_IN_OUT);
+	buf_set_u32(reg_params[1].value, 0, 32, end_address);
+
+	/* fill value */
+	init_reg_param(&reg_params[2], "x2", 64, PARAM_IN_OUT);
+	buf_set_u32(reg_params[2].value, 0, 32, fill_value);
+
+
+	/*
+	 * Link register (in).
+	 * Set link register to the breakpoint instruction at the end of the buffer.
+	 * We use a software breakpoint to notify when done with algorithm execution.
+	 */
+	init_reg_param(&reg_params[3], "x14", 64, PARAM_IN);
+	buf_set_u32(reg_params[3].value, 0, 32, (fill_algorithm->address + (sizeof(armv8_ram_fill_code) - 2)) | 0x1);
+
+	/*
+	* Stack Pointer (in).
+	*/
+	init_reg_param(&reg_params[4], "sp", 64, PARAM_IN_OUT);
+	buf_set_u32(reg_params[4].value, 0, 32, target->working_area_phys + target->working_area_size - 1);
+
+
+	err = target_run_algorithm(target,
+			0, NULL,
+			5, reg_params,
+			fill_algorithm->address, 0,
+			1000, &armv8_algorithm_info);
+
+	if (err != ERROR_OK)  {
+		err = ERROR_TARGET_FAILURE;
+	}
+
+	aarch64_write_phys_memory(target, fill_algorithm->address, 2, fill_algorithm->size / 2, memory_backup);
+
+	/* Free resources */
+	target_free_working_area(target, fill_algorithm);
+
+	destroy_reg_param(&reg_params[0]);
+	destroy_reg_param(&reg_params[1]);
+	destroy_reg_param(&reg_params[2]);
+	destroy_reg_param(&reg_params[3]);
+	destroy_reg_param(&reg_params[4]);
+
+	/* Restore scratch registers */
+
+
+/*
+	for (i = 0; i < num_regs; i++)
+	{
+		// Skip reading FP-SIMD registers
+		if (i >= ARMV8_V0 && i <= ARMV8_FPCR)
+			continue;
+
+		// Special case: ARM_MODE_SYS has no SPSR at EL1
+		if (i == ARMV8_SPSR_EL1 && armv8->arm.core_mode == ARM_MODE_SYS)
+			continue;
+		if (buf_get_u32(armv8->arm.core_cache->reg_list[i].value, 0, 32) != scratch_registers[i])
+		{
+			if (!r->exist || r->valid)
+			{
+				// Restore original context
+				LOG_DEBUG("restoring register %s with value 0x%8.8" PRIx32,
+						armv8->arm.core_cache->reg_list[i].name, scratch_registers[i]);
+			}
+
+			armv8->arm.core_cache->reg_list[i].valid = 1;
+			armv8->arm.core_cache->reg_list[i].dirty = 1;
+		}
+		else
+		{
+			armv8->arm.core_cache->reg_list[i].valid = 1;
+			armv8->arm.core_cache->reg_list[i].dirty = 0;
+		}
+		buf_set_u32(armv8->arm.core_cache->reg_list[i].value, 0, 32, scratch_registers[i]);
+	}
+*/
+	return err;
+}
+
+
 static const struct command_registration aarch64_exec_command_handlers[] = {
 	{
 		.name = "cache_info",
@@ -3151,6 +3367,13 @@ static const struct command_registration aarch64_command_handlers[] = {
 		.usage = "",
 		.chain = aarch64_exec_command_handlers,
 	},
+	{
+		.name = "ram_fill",
+		.handler = armv8_ram_fill,
+		.mode = COMMAND_EXEC,
+		.usage = "ram_fill start_addr size_kb [value_32bit]",
+		.help = "fill range of ram with 0x0",
+	},
 	COMMAND_REGISTRATION_DONE
 };
 
@@ -3214,6 +3437,10 @@ struct target_type armv8r_target = {
 
 	.read_memory = aarch64_read_phys_memory,
 	.write_memory = aarch64_write_phys_memory,
+
+	.run_algorithm = armv8_run_algorithm,
+	.start_algorithm = armv8_start_algorithm,
+	.wait_algorithm = armv8_wait_algorithm,
 
 	.add_breakpoint = aarch64_add_breakpoint,
 	.add_context_breakpoint = aarch64_add_context_breakpoint,

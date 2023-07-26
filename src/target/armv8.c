@@ -114,7 +114,7 @@ const char *armv8_mode_name(unsigned psr_mode)
 	LOG_ERROR("unrecognized psr mode: %#02x", psr_mode);
 	return "UNRECOGNIZED";
 }
-
+/*
 static uint8_t armv8_pa_size(uint32_t ps)
 {
 	uint8_t ret = 0;
@@ -143,7 +143,7 @@ static uint8_t armv8_pa_size(uint32_t ps)
 	}
 	return ret;
 }
-
+*/
 static __attribute__((unused)) int armv8_read_ttbcr32(struct target *target)
 {
 	struct armv8_common *armv8 = target_to_armv8(target);
@@ -182,7 +182,7 @@ done:
 	dpm->finish(dpm);
 	return retval;
 }
-
+/*
 static int armv8_read_ttbcr(struct target *target)
 {
 	struct armv8_common *armv8 = target_to_armv8(target);
@@ -195,7 +195,7 @@ static int armv8_read_ttbcr(struct target *target)
 	if (retval != ERROR_OK)
 		goto done;
 
-	/* clear ttrr1_used and ttbr0_mask */
+//	 clear ttrr1_used and ttbr0_mask
 	memset(&armv8->armv8_mmu.ttbr1_used, 0, sizeof(armv8->armv8_mmu.ttbr1_used));
 	memset(&armv8->armv8_mmu.ttbr0_mask, 0, sizeof(armv8->armv8_mmu.ttbr0_mask));
 
@@ -228,7 +228,7 @@ static int armv8_read_ttbcr(struct target *target)
 		break;
 	case SYSTEM_CUREL_EL0:
 		armv8_dpm_modeswitch(dpm, ARMV8_64_EL1H);
-		/* fall through */
+//		 fall through
 	case SYSTEM_CUREL_EL1:
 		retval = dpm->instr_read_data_r0_64(dpm,
 				ARMV8_MRS(SYSTEM_TCR_EL1, 0),
@@ -260,7 +260,8 @@ done:
 	dpm->finish(dpm);
 	return retval;
 }
-
+*/
+/*
 static int armv8_get_pauth_mask(struct armv8_common *armv8, uint64_t *mask)
 {
 	struct arm *arm = &armv8->arm;
@@ -274,7 +275,7 @@ static int armv8_get_pauth_mask(struct armv8_common *armv8, uint64_t *mask)
 
 	return retval;
 }
-
+*/
 static int armv8_read_reg(struct armv8_common *armv8, int regnum, uint64_t *regval)
 {
 	struct arm_dpm *dpm = &armv8->dpm;
@@ -352,10 +353,10 @@ static int armv8_read_reg(struct armv8_common *armv8, int regnum, uint64_t *regv
 				ARMV8_MRS(SYSTEM_SPSR_EL3, 0), &value);
 		value_64 = value;
 		break;
-	case ARMV8_PAUTH_CMASK:
-	case ARMV8_PAUTH_DMASK:
-		retval = armv8_get_pauth_mask(armv8, &value_64);
-		break;
+//	case ARMV8_PAUTH_CMASK:
+//	case ARMV8_PAUTH_DMASK:
+//		retval = armv8_get_pauth_mask(armv8, &value_64);
+//		break;
 	default:
 		retval = ERROR_FAIL;
 		break;
@@ -1392,8 +1393,7 @@ static const struct {
 
 	{ ARMV8_SP, "sp", 64, ARM_MODE_ANY, REG_TYPE_DATA_PTR, "general", "org.gnu.gdb.aarch64.core", NULL},
 	{ ARMV8_PC, "pc", 64, ARM_MODE_ANY, REG_TYPE_CODE_PTR, "general", "org.gnu.gdb.aarch64.core", NULL},
-	{ ARMV8_XPSR, "cpsr", 32, ARM_MODE_ANY, REG_TYPE_ARCH_DEFINED,
-		"general", "org.gnu.gdb.aarch64.core", aarch64_flags_cpsr},
+	{ ARMV8_XPSR, "cpsr", 32, ARM_MODE_ANY, REG_TYPE_ARCH_DEFINED, "general", "org.gnu.gdb.aarch64.core", aarch64_flags_cpsr},
 	{ ARMV8_V0,  "v0",  128, ARM_MODE_ANY, REG_TYPE_ARCH_DEFINED, "simdfp", "org.gnu.gdb.aarch64.fpu", aarch64v},
 	{ ARMV8_V1,  "v1",  128, ARM_MODE_ANY, REG_TYPE_ARCH_DEFINED, "simdfp", "org.gnu.gdb.aarch64.fpu", aarch64v},
 	{ ARMV8_V2,  "v2",  128, ARM_MODE_ANY, REG_TYPE_ARCH_DEFINED, "simdfp", "org.gnu.gdb.aarch64.fpu", aarch64v},
@@ -1449,8 +1449,8 @@ static const struct {
 														NULL},
 	{ ARMV8_SPSR_EL3, "SPSR_EL3", 32, ARMV8_64_EL3H, REG_TYPE_UINT32, "banked", "net.sourceforge.openocd.banked",
 														NULL},
-	{ ARMV8_PAUTH_DMASK, "pauth_dmask", 64, ARM_MODE_ANY, REG_TYPE_UINT64, NULL, "org.gnu.gdb.aarch64.pauth", NULL},
-	{ ARMV8_PAUTH_CMASK, "pauth_cmask", 64, ARM_MODE_ANY, REG_TYPE_UINT64, NULL, "org.gnu.gdb.aarch64.pauth", NULL},
+//	{ ARMV8_PAUTH_DMASK, "pauth_dmask", 64, ARM_MODE_ANY, REG_TYPE_UINT64, NULL, "org.gnu.gdb.aarch64.pauth", NULL},
+//	{ ARMV8_PAUTH_CMASK, "pauth_cmask", 64, ARM_MODE_ANY, REG_TYPE_UINT64, NULL, "org.gnu.gdb.aarch64.pauth", NULL},
 };
 
 static const struct {
@@ -1662,7 +1662,30 @@ struct reg_cache *armv8_build_reg_cache(struct target *target)
 
 		reg_list[i].group = armv8_regs[i].group;
 		reg_list[i].number = i;
-		reg_list[i].exist = true;
+
+		if (strncmp(target_type_name(target), "armv8r", 6) == 0)
+		{
+			if (((i >= ARMV8_R15) && (i <= ARMV8_R30)) || ((i>=ARMV8_ELR_EL3)&& (i<=ARMV8_SPSR_EL3)))
+			{
+				reg_list32[i].exist = false;
+			}
+			else
+			{
+				/* Skip reading FP-SIMD registers */
+				if (i >= ARMV8_V0 && i <= ARMV8_FPCR)
+				{
+					reg_list[i].exist = false;
+				}
+				else
+				{
+					reg_list[i].exist = true;
+				}
+			}
+		}
+		else
+		{
+			reg_list[i].exist = true;
+		}
 		reg_list[i].caller_save = true;	/* gdb defaults to true */
 
 		feature = calloc(1, sizeof(struct reg_feature));
@@ -1681,8 +1704,8 @@ struct reg_cache *armv8_build_reg_cache(struct target *target)
 		} else
 			LOG_ERROR("unable to allocate reg type list");
 
-		if (i == ARMV8_PAUTH_CMASK || i == ARMV8_PAUTH_DMASK)
-			reg_list[i].hidden = !armv8->enable_pauth;
+//		if (i == ARMV8_PAUTH_CMASK || i == ARMV8_PAUTH_DMASK)
+//			reg_list[i].hidden = !armv8->enable_pauth;
 	}
 
 	arm->cpsr = reg_list + ARMV8_XPSR;
@@ -1880,3 +1903,309 @@ int armv8_set_dbgreg_bits(struct armv8_common *armv8, unsigned int reg, unsigned
 			armv8->debug_base + reg, tmp);
 	return retval;
 }
+
+/** Runs a Thumb algorithm in the target. */
+int armv8_run_algorithm(struct target *target,
+	int num_mem_params, struct mem_param *mem_params,
+	int num_reg_params, struct reg_param *reg_params,
+	target_addr_t entry_point, target_addr_t exit_point,
+	int timeout_ms, void *arch_info)
+{
+	int retval;
+
+	retval = armv8_start_algorithm(target,
+			num_mem_params, mem_params,
+			num_reg_params, reg_params,
+			entry_point, exit_point,
+			arch_info);
+
+	if (retval == ERROR_OK)
+		retval = armv8_wait_algorithm(target,
+				num_mem_params, mem_params,
+				num_reg_params, reg_params,
+				exit_point, timeout_ms,
+				arch_info);
+
+	return retval;
+}
+
+/** Starts a Thumb algorithm in the target. */
+int armv8_start_algorithm(struct target *target,
+	int num_mem_params, struct mem_param *mem_params,
+	int num_reg_params, struct reg_param *reg_params,
+	target_addr_t entry_point, target_addr_t exit_point,
+	void *arch_info)
+{
+	struct armv8_common *armv8 = target_to_armv8(target);
+	struct armv8_algorithm *armv8_algorithm_info = arch_info;
+	enum arm_mode core_mode = armv8->arm.core_mode;
+	int retval = ERROR_OK;
+
+	/* NOTE: armv7m_run_algorithm requires that each algorithm uses a software breakpoint
+	 * at the exit point */
+
+	if (armv8_algorithm_info->common_magic != ARMV8_COMMON_MAGIC) {
+		LOG_ERROR("current target isn't an ARMV8 target");
+		return ERROR_TARGET_INVALID;
+	}
+
+	if (target->state != TARGET_HALTED) {
+		LOG_WARNING("target not halted");
+		return ERROR_TARGET_NOT_HALTED;
+	}
+
+	/* Store all non-debug execution registers to armv8_algorithm_info context */
+	for (unsigned i = 0; i < armv8->arm.core_cache->num_regs; i++) {
+		struct reg *reg = &armv8->arm.core_cache->reg_list[i];
+		struct arm_reg *arm_reg;
+
+		if (!reg->exist)
+			continue;
+
+		if ((((i >= ARMV8_R15) && (i <= ARMV8_R30)) || ((i>=ARMV8_ELR_EL3)&& (i<=ARMV8_SPSR_EL3))) && (strncmp(target_type_name(target), "armv8r", 6) == 0))
+			continue;
+
+		/* Skip reading FP-SIMD registers */
+		if (reg->number >= ARMV8_V0 && reg->number <= ARMV8_FPCR)
+			continue;
+
+		/*
+		 * Only read registers that are available from the
+		 * current EL (or core mode).
+		 */
+		arm_reg = reg->arch_info;
+		if (arm_reg->mode != ARM_MODE_ANY &&
+				armv8->dpm.last_el != armv8_curel_from_core_mode(arm_reg->mode))
+			continue;
+
+		/* Special case: ARM_MODE_SYS has no SPSR at EL1 */
+		if (reg->number == ARMV8_SPSR_EL1 && armv8->arm.core_mode == ARM_MODE_SYS)
+			continue;
+
+		if (!reg->valid){
+			armv8_get_core_reg(reg);
+			reg->valid = true;
+		}
+
+		if (!reg->valid)
+			LOG_TARGET_WARNING(target, "Storing invalid register %s", reg->name);
+
+		armv8_algorithm_info->context[i] = buf_get_u32(reg->value, 0, 32);
+	}
+
+	for (int i = 0; i < num_mem_params; i++) {
+		if (mem_params[i].direction == PARAM_IN)
+			continue;
+		retval = target_write_buffer(target, mem_params[i].address,
+				mem_params[i].size,
+				mem_params[i].value);
+		if (retval != ERROR_OK)
+			return retval;
+	}
+
+	for (int i = 0; i < num_reg_params; i++) {
+		if (reg_params[i].direction == PARAM_IN)
+			continue;
+
+		struct reg *reg =
+			register_get_by_name(armv8->arm.core_cache, reg_params[i].reg_name, false);
+/*		uint32_t regvalue; */
+
+		if (!reg) {
+			LOG_ERROR("BUG: register '%s' not found", reg_params[i].reg_name);
+			return ERROR_COMMAND_SYNTAX_ERROR;
+		}
+
+		if (reg->size != reg_params[i].size) {
+			LOG_ERROR("BUG: register '%s' size doesn't match reg_params[i].size",
+				reg_params[i].reg_name);
+			return ERROR_COMMAND_SYNTAX_ERROR;
+		}
+
+/*		regvalue = buf_get_u32(reg_params[i].value, 0, 32); */
+		armv8_set_core_reg(reg, reg_params[i].value);
+	}
+
+	{
+		uint32_t XPSR_loc;
+		/*
+		 * Ensure xPSR.T is set to avoid trying to run things in arm
+		 * (non-thumb) mode, which armv8 does not support.
+		 *
+		 * We do this by setting the entirety of xPSR, which should
+		 * remove all the unknowns about xPSR state.
+		 *
+		 * Because xPSR.T is populated on reset from the vector table,
+		 * it might be 0 if the vector table has "bad" data in it.
+		 */
+		struct reg *reg = &armv8->arm.core_cache->reg_list[ARMV8_XPSR];
+		XPSR_loc =  buf_get_u32(reg->value, 0, 32);
+		if (!(XPSR_loc & 0x20))
+		{
+			XPSR_loc |= 0x20;
+			buf_set_u32(reg->value, 0, 32, XPSR_loc);
+			reg->valid = true;
+			reg->dirty = true;
+		}
+	}
+/*
+	if (armv8_algorithm_info->core_mode != ARM_MODE_ANY &&
+			armv8_algorithm_info->core_mode != core_mode) {
+
+		// we cannot set ARM_MODE_HANDLER, so use ARM_MODE_THREAD instead
+		if (armv8_algorithm_info->core_mode == ARM_MODE_HANDLER) {
+			armv8_algorithm_info->core_mode = ARM_MODE_THREAD;
+			LOG_INFO("ARM_MODE_HANDLER not currently supported, using ARM_MODE_THREAD instead");
+		}
+
+		LOG_DEBUG("setting core_mode: 0x%2.2x", armv8_algorithm_info->core_mode);
+		buf_set_u32(armv8->arm.core_cache->reg_list[ARMV8_XPSR].value,
+			0, 1, armv8_algorithm_info->core_mode);
+		armv8->arm.core_cache->reg_list[ARMV8_XPSR].dirty = true;
+		armv8->arm.core_cache->reg_list[ARMV8_XPSR].valid = true;
+	}
+*/
+	/* save previous core mode */
+	armv8_algorithm_info->core_mode = core_mode;
+
+	retval =  armv8_set_dbgreg_bits(armv8, CPUV8_DBG_DSCR, DSCR_HDE, DSCR_HDE);
+
+	if (retval != ERROR_OK) {
+		LOG_DEBUG("Failed to set DSCR.HDE");
+		return retval;
+	}
+
+	retval = target_resume(target, 0, entry_point, 1, 1);
+
+	return retval;
+}
+
+/** Waits for an algorithm in the target. */
+int armv8_wait_algorithm(struct target *target,
+	int num_mem_params, struct mem_param *mem_params,
+	int num_reg_params, struct reg_param *reg_params,
+	target_addr_t exit_point, int timeout_ms,
+	void *arch_info)
+{
+	struct armv8_common *armv8 = target_to_armv8(target);
+	struct armv8_algorithm *armv8_algorithm_info = arch_info;
+	int retval = ERROR_OK;
+	struct arm_reg *arm_reg;
+
+	/* NOTE: armv8_run_algorithm requires that each algorithm uses a software breakpoint
+	 * at the exit point */
+
+	if (armv8_algorithm_info->common_magic != ARMV8_COMMON_MAGIC) {
+		LOG_ERROR("current target isn't an ARMV8 target");
+		return ERROR_TARGET_INVALID;
+	}
+
+	retval = target_wait_state(target, TARGET_HALTED, timeout_ms);
+	/* If the target fails to halt due to the breakpoint, force a halt */
+	if (retval != ERROR_OK || target->state != TARGET_HALTED) {
+		retval = target_halt(target);
+		if (retval != ERROR_OK)
+			return retval;
+		retval = target_wait_state(target, TARGET_HALTED, 500);
+		if (retval != ERROR_OK)
+			return retval;
+		return ERROR_TARGET_TIMEOUT;
+	}
+
+	if (exit_point) {
+		/* PC value has been cached in cortex_m_debug_entry() */
+		uint32_t pc = buf_get_u32(armv8->arm.pc->value, 0, 32);
+		if (pc != exit_point) {
+			LOG_DEBUG("failed algorithm halted at 0x%" PRIx32 ", expected 0x%" TARGET_PRIxADDR,
+					  pc, exit_point);
+			return ERROR_TARGET_ALGO_EXIT;
+		}
+	}
+
+	/* Read memory values to mem_params[] */
+	for (int i = 0; i < num_mem_params; i++) {
+		if (mem_params[i].direction != PARAM_OUT) {
+			retval = target_read_buffer(target, mem_params[i].address,
+					mem_params[i].size,
+					mem_params[i].value);
+			if (retval != ERROR_OK)
+				return retval;
+		}
+	}
+
+	/* Copy core register values to reg_params[] */
+	for (int i = 0; i < num_reg_params; i++) {
+		if (reg_params[i].direction != PARAM_OUT) {
+			struct reg *reg = register_get_by_name(armv8->arm.core_cache,
+					reg_params[i].reg_name,
+					false);
+
+			if (!reg) {
+				LOG_ERROR("BUG: register '%s' not found", reg_params[i].reg_name);
+				return ERROR_COMMAND_SYNTAX_ERROR;
+			}
+
+			if (reg->size != reg_params[i].size) {
+				LOG_ERROR(
+					"BUG: register '%s' size doesn't match reg_params[i].size",
+					reg_params[i].reg_name);
+				return ERROR_COMMAND_SYNTAX_ERROR;
+			}
+
+			buf_set_u32(reg_params[i].value, 0, 32, buf_get_u32(reg->value, 0, 32));
+		}
+	}
+
+	for (int i = armv8->arm.core_cache->num_regs - 1; i >= 0; i--) {
+		struct reg *reg = &armv8->arm.core_cache->reg_list[i];
+		if (!reg->exist)
+			continue;
+
+
+		if ((((i >= ARMV8_R15) && (i <= ARMV8_R30)) || ((i>=ARMV8_ELR_EL3)&& (i<=ARMV8_SPSR_EL3))) && (strncmp(target_type_name(target), "armv8r", 6) == 0))
+			continue;
+
+		/* Skip reading FP-SIMD registers */
+		if (reg->number >= ARMV8_V0 && reg->number <= ARMV8_FPCR)
+			continue;
+
+		/*
+		 * Only read registers that are available from the
+		 * current EL (or core mode).
+		 */
+		arm_reg = reg->arch_info;
+		if (arm_reg->mode != ARM_MODE_ANY &&
+			armv8->dpm.last_el != armv8_curel_from_core_mode(arm_reg->mode))
+			continue;
+
+		/* Special case: ARM_MODE_SYS has no SPSR at EL1 */
+		if (reg->number == ARMV8_SPSR_EL1 && armv8->arm.core_mode == ARM_MODE_SYS)
+			continue;
+
+
+		//uint32_t regvalue;
+		//regvalue = buf_get_u32(reg->value, 0, 32);
+		//if (regvalue != armv8_algorithm_info->context[i]) {
+		LOG_DEBUG("restoring register %s with value 0x%8.8" PRIx32,
+				  reg->name, armv8_algorithm_info->context[i]);
+		buf_set_u32(reg->value,
+			0, 32, armv8_algorithm_info->context[i]);
+		reg->valid = true;
+		reg->dirty = true;
+		//}
+	}
+
+	/* restore previous core mode */
+	if (armv8_algorithm_info->core_mode != armv8->arm.core_mode) {
+		LOG_DEBUG("restoring core_mode: 0x%2.2x", armv8_algorithm_info->core_mode);
+		buf_set_u32(armv8->arm.core_cache->reg_list[ARMV8_XPSR].value,
+			0, 1, armv8_algorithm_info->core_mode);
+		armv8->arm.core_cache->reg_list[ARMV8_XPSR].dirty = true;
+		armv8->arm.core_cache->reg_list[ARMV8_XPSR].valid = true;
+	}
+
+	armv8->arm.core_mode = armv8_algorithm_info->core_mode;
+
+	return retval;
+}
+
