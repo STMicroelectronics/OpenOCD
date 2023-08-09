@@ -791,6 +791,7 @@ static int sr5_write(struct flash_bank *bank, const uint8_t *buffer,
 	uint32_t loc_stack[2];
 
 	uint32_t remote_stack_size;
+	uint32_t opReturn;
 
 	/* Set arch info */
 	armv7m_algorithm_info.common_magic = ARMV7M_COMMON_MAGIC;
@@ -814,6 +815,24 @@ static int sr5_write(struct flash_bank *bank, const uint8_t *buffer,
 		LOG_ERROR("Target not halted");
 		return ERROR_TARGET_NOT_HALTED;
 	}
+
+
+	err = sr5_setlock(bank, C55_BLOCK_LOW, (0xFFFFFC00));
+	if (err != ERROR_OK)
+		return err;
+
+	err = sr5_setlock(bank, C55_BLOCK_MID, (0xFFFFFFFC));
+	if (err != ERROR_OK)
+		return err;
+
+	err = sr5_setlock(bank, C55_BLOCK_HIGH, (0xFFFFFFF0));
+	if (err != ERROR_OK)
+		return err;
+
+	err = sr5_setlock(bank, C55_BLOCK_LARGE_FIRST, (0xFFFFFFC0));
+	if (err != ERROR_OK)
+		return err;
+
 
 
 	for(i = 0; i < bank->num_sectors; i++)
@@ -979,6 +998,9 @@ static int sr5_write(struct flash_bank *bank, const uint8_t *buffer,
 				2000000000, &armv7m_algorithm_info);
 
 		LOG_DEBUG("Device buffer Size: %d, Number of iteraction: %d, Current iteraction: %d, err: %d", chunk_size, chunk_number, i, err);
+
+		opReturn = buf_get_u32(reg_params[0].value, 0, 32);
+		LOG_DEBUG("opReturn: %d", opReturn);
 
 		destroy_reg_param(&reg_params[0]);
 		destroy_reg_param(&reg_params[1]);
