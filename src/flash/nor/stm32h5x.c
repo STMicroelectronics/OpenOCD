@@ -108,6 +108,11 @@ static const struct stm32h5x_rev stm32h56_h57xx_revs[] = {
 	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1007, "X" }, NO_MORE_REVS
 };
 
+ /* TODO: info still not available, these values are wrong for H5 512 */
+static const struct stm32h5x_rev stm32h52_h53xx_revs[] = {
+	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1007, "X" }, NO_MORE_REVS
+};
+
 /* Devices identities */
 static const struct stm32h5x_dev_info stm32h5x_dev_info_db[] = {
 	{
@@ -132,6 +137,18 @@ static const struct stm32h5x_dev_info stm32h5x_dev_info_db[] = {
 		.wps_group_size		= 4,
 		.wps_mask			= 0xFFFFFFFF,
 	},
+	{
+		.id					= DEVID_STM32H52_H53XX,
+		.name				= "STM32H52/H53xx",
+		.revs				= stm32h52_h53xx_revs,
+		.flags				= F_HAS_DUAL_BANK | F_HAS_TZ,
+		.max_flash_size_kb	= 512,
+		.flash_regs_base	= 0x40022000,
+		.flash_size_addr	= 0x08FFF80C,
+		.wps_group_size		= 4,
+		.wps_mask			= 0xFFFFFFFF,
+	},
+
 };
 
 /* Register maps*/
@@ -1169,6 +1186,7 @@ static int stm32h5x_probe(struct flash_bank *bank)
 
 	switch (device_id) {
 	case DEVID_STM32H50XX:
+	case DEVID_STM32H52_H53XX:
 	case DEVID_STM32H56_H57XX:
 		/* Always dual-bank */
 		stm32h5x_bank->dual_bank = true;

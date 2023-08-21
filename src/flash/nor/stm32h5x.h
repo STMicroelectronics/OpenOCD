@@ -91,6 +91,7 @@
 /* Supported device IDs */
 #define DEVID_STM32H50XX		0x474    /* RM0492 */
 #define DEVID_STM32H56_H57XX	0x484    /* RM0481 */
+#define DEVID_STM32H52_H53XX	0x478    /* RM0481 */
 
 /* Known Flash base addresses */
 #define STM32_FLASH_BANK_BASE	0x08000000
