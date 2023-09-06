@@ -64,7 +64,7 @@ static const struct flash_ctrl_priv_data flash_priv_data_lp = {
 	.flash_regs_base = 0x40001000,
 	.flash_page_size = 2048,
 	.jtag_idcode = 0x0201E041,
-	.part_name = "BLUENRG-LP",
+	.part_name = "STM32WB07 (BLUENRG-LP)",
 };
 
 static const struct flash_ctrl_priv_data flash_priv_data_lps = {
@@ -74,7 +74,7 @@ static const struct flash_ctrl_priv_data flash_priv_data_lps = {
 	.flash_regs_base = 0x40001000,
 	.flash_page_size = 2048,
 	.jtag_idcode = 0x02028041,
-	.part_name = "BLUENRG-LPS",
+	.part_name = "STM32WB05 (BLUENRG-LPS)",
 };
 
 static const struct flash_ctrl_priv_data flash_priv_data_lpf = {
@@ -84,7 +84,7 @@ static const struct flash_ctrl_priv_data flash_priv_data_lpf = {
 	.flash_regs_base = 0x40001000,
 	.flash_page_size = 2048,
 	.jtag_idcode = 0x02032041,
-	.part_name = "BLUENRG-LPF",
+	.part_name = "STM32WB09 (BLUENRG-LPF)",
 };
 struct bluenrgx_flash_bank {
 	bool probed;
@@ -404,7 +404,6 @@ static int bluenrgx_probe(struct flash_bank *bank)
 		if (retval != ERROR_OK)
 			return retval;
 	}
-
 
 	/* Default device is BlueNRG-1 */
 	bluenrgx_info->flash_ptr = &flash_priv_data_1;
