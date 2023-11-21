@@ -35,7 +35,7 @@
 
 #define WRTE_OFFSET 0x8000000
 
-struct sr6_flash_bank {
+struct sr6p6_flash_bank {
 	int probed;
 	uint32_t user_bank_addr;
 	uint32_t user_bank_size;
@@ -49,9 +49,9 @@ struct sr6_flash_bank {
 };
 
 /* flash bank s6 <base> <size> 0 0 <target#> */
-FLASH_BANK_COMMAND_HANDLER(sr6_flash_bank_command)
+FLASH_BANK_COMMAND_HANDLER(sr6p6_flash_bank_command)
 {
-	struct sr6_flash_bank *sr6_info;
+	struct sr6p6_flash_bank *sr6p6_info;
 
 	LOG_DEBUG("%s:%d %s()",
 		__FILE__, __LINE__, __func__);
@@ -59,33 +59,33 @@ FLASH_BANK_COMMAND_HANDLER(sr6_flash_bank_command)
 	if (CMD_ARGC < 6)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
-	sr6_info = malloc(sizeof(struct sr6_flash_bank));
-	bank->driver_priv = sr6_info;
+	sr6p6_info = malloc(sizeof(struct sr6p6_flash_bank));
+	bank->driver_priv = sr6p6_info;
 
-	sr6_info->probed = 0;
-	sr6_info->user_bank_addr = bank->base;
-	sr6_info->user_bank_size = bank->size;
+	sr6p6_info->probed = 0;
+	sr6p6_info->user_bank_addr = bank->base;
+	sr6p6_info->user_bank_size = bank->size;
 
 	return ERROR_OK;
 }
 
-static int sr6_protect_check(struct flash_bank *bank)
+static int sr6p6_protect_check(struct flash_bank *bank)
 {
 	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
 	return ERROR_OK;
 }
 
-static int sr6_setlock(struct flash_bank *bank, uint32_t block_space, uint32_t lock_state)
+static int sr6p6_setlock(struct flash_bank *bank, uint32_t block_space, uint32_t lock_state)
 {
 	int err;
 	struct target *target = bank->target;
-	struct sr6_flash_bank *sr6_info = bank->driver_priv;
+	struct sr6p6_flash_bank *sr6p6_info = bank->driver_priv;
 	struct working_area *ssd_config;
 	struct working_area *setlock_algorithm;
 	struct reg_param reg_params[5];
 	struct armv8_algorithm armv8_algorithm_info;
-	SSD_CONFIG *ssd = &sr6_info->ssd;
+	SSD_CONFIG *ssd = &sr6p6_info->ssd;
 	SSD_CONFIG ssd_lock;
 
 	ssd_lock.NVMRegBase = ssd->NVMRegBase;
@@ -206,12 +206,12 @@ static int sr6_setlock(struct flash_bank *bank, uint32_t block_space, uint32_t l
 	return err;
 }
 
-static int sr6_getlock(struct flash_bank *bank,
+static int sr6p6_getlock(struct flash_bank *bank,
 		uint8_t block_space, uint32_t *lock_state)
 {
 	int err;
 	struct target *target = bank->target;
-	struct sr6_flash_bank *sr6_info = bank->driver_priv;
+	struct sr6p6_flash_bank *sr6p6_info = bank->driver_priv;
 	struct working_area *ssd_config;
 
 	struct working_area *getlock_working_area;
@@ -219,7 +219,7 @@ static int sr6_getlock(struct flash_bank *bank,
 	struct working_area *getlock_algorithm;
 	struct reg_param reg_params[5];
 	struct armv8_algorithm armv8_algorithm_info;
-	SSD_CONFIG *ssd = &sr6_info->ssd;
+	SSD_CONFIG *ssd = &sr6p6_info->ssd;
 	SSD_CONFIG ssd_lock;
 
 	ssd_lock.NVMRegBase = ssd->NVMRegBase;
@@ -368,7 +368,7 @@ flash_getlock_error:
 	return err;
 }
 
-static int sr6_write(struct flash_bank *bank, const uint8_t *buffer,
+static int sr6p6_write(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
 	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
@@ -383,7 +383,7 @@ static int sr6_write(struct flash_bank *bank, const uint8_t *buffer,
 
 	struct armv8_algorithm armv8_algorithm_info;
 	struct target *target = bank->target;
-	struct sr6_flash_bank *sr6_info = bank->driver_priv;
+	struct sr6p6_flash_bank *sr6p6_info = bank->driver_priv;
 
 	static struct working_area *source;
 	struct working_area *write_algorithm;
@@ -392,7 +392,7 @@ static int sr6_write(struct flash_bank *bank, const uint8_t *buffer,
 	struct working_area *remote_stack;
 
 	struct reg_param reg_params[6];
-	SSD_CONFIG *ssd = &sr6_info->ssd;
+	SSD_CONFIG *ssd = &sr6p6_info->ssd;
 	int err = ERROR_OK;
 
 
@@ -432,43 +432,43 @@ static int sr6_write(struct flash_bank *bank, const uint8_t *buffer,
 	}
 
 
-	err = sr6_getlock(bank, NVM_BLOCK_LOW, &lock_state);
+	err = sr6p6_getlock(bank, NVM_BLOCK_LOW, &lock_state);
 	if (err != ERROR_OK)
 		return err;
 
-	err = sr6_setlock(bank, NVM_BLOCK_LOW, (lock_state & 0xFFFF0F00));
+	err = sr6p6_setlock(bank, NVM_BLOCK_LOW, (lock_state & 0xFFFF0F00));
 	if (err != ERROR_OK)
 		return err;
 
-	err = sr6_getlock(bank, NVM_BLOCK_MID,  &lock_state);
+	err = sr6p6_getlock(bank, NVM_BLOCK_MID,  &lock_state);
 	if (err != ERROR_OK)
 		return err;
 
-	err = sr6_setlock(bank, NVM_BLOCK_MID, (lock_state & 0xFFFFFF00));
+	err = sr6p6_setlock(bank, NVM_BLOCK_MID, (lock_state & 0xFFFFFF00));
 	if (err != ERROR_OK)
 		return err;
 
-	err = sr6_getlock(bank, NVM_BLOCK_HIGH, &lock_state);
+	err = sr6p6_getlock(bank, NVM_BLOCK_HIGH, &lock_state);
 	if (err != ERROR_OK)
 		return err;
 
-	err = sr6_setlock(bank, NVM_BLOCK_HIGH, (lock_state & 0xFFFFFF00));
+	err = sr6p6_setlock(bank, NVM_BLOCK_HIGH, (lock_state & 0xFFFFFF00));
 	if (err != ERROR_OK)
 		return err;
-	err = sr6_getlock(bank, NVM_BLOCK_256_FIRST, &lock_state);
+	err = sr6p6_getlock(bank, NVM_BLOCK_256_FIRST, &lock_state);
 	if (err != ERROR_OK)
 		return err;
 
-	err = sr6_setlock(bank, NVM_BLOCK_256_FIRST, (lock_state & 0xF0000000));
+	err = sr6p6_setlock(bank, NVM_BLOCK_256_FIRST, (lock_state & 0xF0000000));
 	if (err != ERROR_OK)
 		return err;
 
 	if (bank->base == 0x29F87000)
 	{
-		err = sr6_getlock(bank, NVM_BLOCK_UTEST,  &lock_state);
+		err = sr6p6_getlock(bank, NVM_BLOCK_UTEST,  &lock_state);
 		if (err != ERROR_OK)
 			return err;
-		err = sr6_setlock(bank, NVM_BLOCK_UTEST, lock_state & 0xFFFFFFF0);
+		err = sr6p6_setlock(bank, NVM_BLOCK_UTEST, lock_state & 0xFFFFFFF0);
 		if (err != ERROR_OK)
 			return err;
 	}
@@ -768,7 +768,7 @@ flash_write_error:
 	return err;
 }
 
-static int sr6_writeToErase(struct flash_bank *bank, const uint8_t *buffer,
+static int sr6p6_writeToErase(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
 	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
@@ -781,13 +781,13 @@ static int sr6_writeToErase(struct flash_bank *bank, const uint8_t *buffer,
 
 	struct armv8_algorithm armv8_algorithm_info;
 	struct target *target = bank->target;
-	struct sr6_flash_bank *sr6_info = bank->driver_priv;
+	struct sr6p6_flash_bank *sr6p6_info = bank->driver_priv;
 
 	struct working_area *erase_algorithm;
 	struct working_area *ssd_config;
 
 	struct reg_param reg_params[6];
-	SSD_CONFIG *ssd = &sr6_info->ssd;
+	SSD_CONFIG *ssd = &sr6p6_info->ssd;
 	int err = ERROR_OK;
 
 	int32_t tot_sector = 0;
@@ -931,13 +931,13 @@ flash_erase_error:
 }
 
 
-static int sr6_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
+static int sr6p6_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
 {
 
 	unsigned int i;
 	int err;
 	struct target *target = bank->target;
-	struct sr6_flash_bank *sr6_info = bank->driver_priv;
+	struct sr6p6_flash_bank *sr6p6_info = bank->driver_priv;
 
 	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
 
@@ -962,27 +962,27 @@ static int sr6_erase(struct flash_bank *bank, unsigned int first, unsigned int l
 	if (bank->base == 0x28000000)
 	{
 		for (i = first; i <= last; i++) {
-			if (i < sr6_info->low_max_index) {
+			if (i < sr6p6_info->low_max_index) {
 				low_mask |= (1 <<  (i + 1));
-			} else if (i < sr6_info->large_max_index) {
-				nLargeBlockSelect.first256BlockSelect |= (1 << (i - sr6_info->low_max_index));
-			} else if (i < sr6_info->mid_max_index) {
-				mid_mask |= (1 << (i - sr6_info->low_max_index));
-			} else if (i < sr6_info->high_max_index) {
-				high_mask |= (1 << (i - sr6_info->mid_max_index));
+			} else if (i < sr6p6_info->large_max_index) {
+				nLargeBlockSelect.first256BlockSelect |= (1 << (i - sr6p6_info->low_max_index));
+			} else if (i < sr6p6_info->mid_max_index) {
+				mid_mask |= (1 << (i - sr6p6_info->low_max_index));
+			} else if (i < sr6p6_info->high_max_index) {
+				high_mask |= (1 << (i - sr6p6_info->mid_max_index));
 			}
 		}
 	}
 	else if (bank->base == 0x28400000)
 	{
 		for (i = first; i <= last; i++) {
-			if (i < sr6_info->mid_max_index) {
+			if (i < sr6p6_info->mid_max_index) {
 				mid_mask |= (1 << i);
-			} else if (i < sr6_info->large_max_index) {
-				nLargeBlockSelect.first256BlockSelect |= (1 << ((i - sr6_info->mid_max_index)+14));
-			} else if (i < sr6_info->low_max_index) {
+			} else if (i < sr6p6_info->large_max_index) {
+				nLargeBlockSelect.first256BlockSelect |= (1 << ((i - sr6p6_info->mid_max_index)+14));
+			} else if (i < sr6p6_info->low_max_index) {
 				low_mask |= (1 << i);
-			} else if (i < sr6_info->high_max_index) {
+			} else if (i < sr6p6_info->high_max_index) {
 				high_mask |= (1 << i);
 			}
 		}
@@ -990,13 +990,13 @@ static int sr6_erase(struct flash_bank *bank, unsigned int first, unsigned int l
 	else if (bank->base == 0x28800000)
 	{
 		for (i = first; i <= last; i++) {
-			if (i < sr6_info->low_max_index) {
+			if (i < sr6p6_info->low_max_index) {
 				low_mask |= (1 << (i + 17));
-			} else if (i < sr6_info->large_max_index) {
-				nLargeBlockSelect.first256BlockSelect |= (1 << (i - sr6_info->low_max_index));
-			} else if (i < sr6_info->mid_max_index) {
+			} else if (i < sr6p6_info->large_max_index) {
+				nLargeBlockSelect.first256BlockSelect |= (1 << (i - sr6p6_info->low_max_index));
+			} else if (i < sr6p6_info->mid_max_index) {
 				mid_mask |= (1 << i);
-			} else if (i < sr6_info->high_max_index) {
+			} else if (i < sr6p6_info->high_max_index) {
 				high_mask |= (1 << i);
 			}
 		}
@@ -1004,13 +1004,13 @@ static int sr6_erase(struct flash_bank *bank, unsigned int first, unsigned int l
 	else if (bank->base == 0x28C00000)
 	{
 		for (i = first; i <= last; i++) {
-			if (i < sr6_info->mid_max_index) {
+			if (i < sr6p6_info->mid_max_index) {
 				mid_mask |= (1 << i);
-			} else if (i < sr6_info->large_max_index) {
-				nLargeBlockSelect.first256BlockSelect |= (1 << ((i - sr6_info->mid_max_index)+15));
-			} else if (i < sr6_info->low_max_index) {
+			} else if (i < sr6p6_info->large_max_index) {
+				nLargeBlockSelect.first256BlockSelect |= (1 << ((i - sr6p6_info->mid_max_index)+15));
+			} else if (i < sr6p6_info->low_max_index) {
 				low_mask |= (1 << i);
-			} else if (i < sr6_info->high_max_index) {
+			} else if (i < sr6p6_info->high_max_index) {
 				high_mask |= (1 << i);
 			}
 		}
@@ -1018,13 +1018,13 @@ static int sr6_erase(struct flash_bank *bank, unsigned int first, unsigned int l
 	else if (bank->base == 0x29000000)
 	{
 		for (i = first; i <= last; i++) {
-			if (i < sr6_info->low_max_index) {
+			if (i < sr6p6_info->low_max_index) {
 				low_mask |= (1 << (i + 17));
-			} else if (i < sr6_info->large_max_index) {
-				nLargeBlockSelect.first256BlockSelect |= (1 << (i - sr6_info->low_max_index));
-			} else if (i < sr6_info->mid_max_index) {
+			} else if (i < sr6p6_info->large_max_index) {
+				nLargeBlockSelect.first256BlockSelect |= (1 << (i - sr6p6_info->low_max_index));
+			} else if (i < sr6p6_info->mid_max_index) {
 				mid_mask |= (1 << i);
-			} else if (i < sr6_info->high_max_index) {
+			} else if (i < sr6p6_info->high_max_index) {
 				high_mask |= (1 << i);
 			}
 		}
@@ -1032,13 +1032,13 @@ static int sr6_erase(struct flash_bank *bank, unsigned int first, unsigned int l
 	else if (bank->base == 0x29400000)
 	{
 		for (i = first; i <= last; i++) {
-			if (i < sr6_info->mid_max_index) {
+			if (i < sr6p6_info->mid_max_index) {
 				mid_mask |= (1 << i);
-			} else if (i < sr6_info->large_max_index) {
-				nLargeBlockSelect.first256BlockSelect |= (1 << ((i - sr6_info->mid_max_index) + 7));
-			} else if (i < sr6_info->low_max_index) {
+			} else if (i < sr6p6_info->large_max_index) {
+				nLargeBlockSelect.first256BlockSelect |= (1 << ((i - sr6p6_info->mid_max_index) + 7));
+			} else if (i < sr6p6_info->low_max_index) {
 				low_mask |= (1 << i);
-			} else if (i < sr6_info->high_max_index) {
+			} else if (i < sr6p6_info->high_max_index) {
 				high_mask |= (1 << i);
 			}
 		}
@@ -1046,13 +1046,13 @@ static int sr6_erase(struct flash_bank *bank, unsigned int first, unsigned int l
 	else if (bank->base == 0x29E00000)
 	{
 		for (i = first; i <= last; i++) {
-			if (i < sr6_info->high_max_index) {
+			if (i < sr6p6_info->high_max_index) {
 				high_mask |= (1 << i);
-			} else if (i < sr6_info->large_max_index) {
-				nLargeBlockSelect.first256BlockSelect |= (1 << ((i - sr6_info->mid_max_index) + 7));
-			} else if (i < sr6_info->low_max_index) {
+			} else if (i < sr6p6_info->large_max_index) {
+				nLargeBlockSelect.first256BlockSelect |= (1 << ((i - sr6p6_info->mid_max_index) + 7));
+			} else if (i < sr6p6_info->low_max_index) {
 				low_mask |= (1 << i);
-			} else if (i < sr6_info->mid_max_index) {
+			} else if (i < sr6p6_info->mid_max_index) {
 				mid_mask |= (1 << i);
 			}
 		}
@@ -1061,7 +1061,7 @@ static int sr6_erase(struct flash_bank *bank, unsigned int first, unsigned int l
 	{
 /*
 		for (i = first; i <= last; i++) {
-			if (i < sr6_info->low_max_index) {
+			if (i < sr6p6_info->low_max_index) {
 				low_mask |= (1 << i);
 			}
 		}
@@ -1075,65 +1075,65 @@ static int sr6_erase(struct flash_bank *bank, unsigned int first, unsigned int l
 	uint32_t lock_state;
 
 	if (low_mask != 0) {
-		err = sr6_getlock(bank, NVM_BLOCK_LOW, &lock_state);
+		err = sr6p6_getlock(bank, NVM_BLOCK_LOW, &lock_state);
 		if (err != ERROR_OK)
 			return err;
 
-		err = sr6_setlock(bank, NVM_BLOCK_LOW, (lock_state & 0xFFFF0F00));
+		err = sr6p6_setlock(bank, NVM_BLOCK_LOW, (lock_state & 0xFFFF0F00));
 		if (err != ERROR_OK)
 			return err;
 	}
 
 	if (mid_mask != 0) {
-		err = sr6_getlock(bank, NVM_BLOCK_MID,  &lock_state);
+		err = sr6p6_getlock(bank, NVM_BLOCK_MID,  &lock_state);
 		if (err != ERROR_OK)
 			return err;
 
-		err = sr6_setlock(bank, NVM_BLOCK_MID, (lock_state & 0xFFFFFF00));
+		err = sr6p6_setlock(bank, NVM_BLOCK_MID, (lock_state & 0xFFFFFF00));
 		if (err != ERROR_OK)
 			return err;
 	}
 
 	if (high_mask != 0) {
-		err = sr6_getlock(bank, NVM_BLOCK_HIGH, &lock_state);
+		err = sr6p6_getlock(bank, NVM_BLOCK_HIGH, &lock_state);
 		if (err != ERROR_OK)
 			return err;
 
-		err = sr6_setlock(bank, NVM_BLOCK_HIGH, (lock_state & 0xFFFFFF00));
+		err = sr6p6_setlock(bank, NVM_BLOCK_HIGH, (lock_state & 0xFFFFFF00));
 		if (err != ERROR_OK)
 			return err;
 	}
 
 	if (nLargeBlockSelect.first256BlockSelect != 0) {
-		err = sr6_getlock(bank, NVM_BLOCK_256_FIRST, &lock_state);
+		err = sr6p6_getlock(bank, NVM_BLOCK_256_FIRST, &lock_state);
 		if (err != ERROR_OK)
 			return err;
 
-		err = sr6_setlock(bank, NVM_BLOCK_256_FIRST, (lock_state & 0xF0000000));
+		err = sr6p6_setlock(bank, NVM_BLOCK_256_FIRST, (lock_state & 0xF0000000));
 		if (err != ERROR_OK)
 			return err;
 	}
 
 	if (utest_mask !=0)
 	{
-		err = sr6_getlock(bank, NVM_BLOCK_UTEST,  &lock_state);
+		err = sr6p6_getlock(bank, NVM_BLOCK_UTEST,  &lock_state);
 		if (err != ERROR_OK)
 			return err;
-		err = sr6_setlock(bank, NVM_BLOCK_UTEST, lock_state & 0xFFFFFFF0);
+		err = sr6p6_setlock(bank, NVM_BLOCK_UTEST, lock_state & 0xFFFFFFF0);
 		if (err != ERROR_OK)
 			return err;
 	}
 
 	for (i=first; i<= last; i++)
 	{
-		sr6_writeToErase(bank, buffer, bank->sectors[i].offset, bank->sectors[i].size);
+		sr6p6_writeToErase(bank, buffer, bank->sectors[i].offset, bank->sectors[i].size);
 	}
 
 	return err;
 }
 
 
-static int sr6_protect(struct flash_bank *bank, int set, unsigned int first, unsigned int last)
+static int sr6p6_protect(struct flash_bank *bank, int set, unsigned int first, unsigned int last)
 {
 	struct target *target = bank->target;
 
@@ -1160,15 +1160,15 @@ static void setup_sector(struct flash_bank *bank, unsigned int start, unsigned i
 	}
 }
 
-static int sr6_probe(struct flash_bank *bank)
+static int sr6p6_probe(struct flash_bank *bank)
 {
-	struct sr6_flash_bank *sr6_info = bank->driver_priv;
+	struct sr6p6_flash_bank *sr6p6_info = bank->driver_priv;
 	struct target *target = bank->target;
 	struct working_area *ssd_config;
 	struct working_area *init_algorithm;
 	struct reg_param reg_params[3];
 	struct armv8_algorithm armv8_algorithm_info;
-	SSD_CONFIG *ssd = &sr6_info->ssd;
+	SSD_CONFIG *ssd = &sr6p6_info->ssd;
 
 
 	int i;
@@ -1181,15 +1181,15 @@ static int sr6_probe(struct flash_bank *bank)
 
 	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
-	sr6_info->probed = 0;
+	sr6p6_info->probed = 0;
 
 	/* The user sets the size manually */
-	if (sr6_info->user_bank_size) {
+	if (sr6p6_info->user_bank_size) {
 		LOG_DEBUG("ignoring flash probed value, using configured bank size");
-		flash_size_in_kb = sr6_info->user_bank_size / 1024;
+		flash_size_in_kb = sr6p6_info->user_bank_size / 1024;
 	}
 
-	LOG_INFO("flash: %d kbytes @ 0x%08x", flash_size_in_kb, sr6_info->user_bank_addr);
+	LOG_INFO("flash: %d kbytes @ 0x%08x", flash_size_in_kb, sr6p6_info->user_bank_addr);
 
 
 	/* did we assign flash size? */
@@ -1335,7 +1335,7 @@ static int sr6_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = sr6_info->user_bank_addr;
+		bank->base = sr6p6_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1348,10 +1348,10 @@ static int sr6_probe(struct flash_bank *bank)
 		// Large Flash Blocks
 		setup_sector(bank, 8, 14, 256 * 1024);
 
-		sr6_info->low_max_index = 8;
-		sr6_info->large_max_index = 22;
-		sr6_info->high_max_index = 0;
-		sr6_info->mid_max_index = 0;
+		sr6p6_info->low_max_index = 8;
+		sr6p6_info->large_max_index = 22;
+		sr6p6_info->high_max_index = 0;
+		sr6p6_info->mid_max_index = 0;
 	}
 	if(bank->base == 0x28400000)   //Cluster 0 core 1
 	{
@@ -1365,7 +1365,7 @@ static int sr6_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = sr6_info->user_bank_addr;
+		bank->base = sr6p6_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1378,14 +1378,14 @@ static int sr6_probe(struct flash_bank *bank)
 		// Large Flash Blocks
 		setup_sector(bank, 8, 14, 256 * 1024);
 
-		sr6_info->low_max_index = 0;
-		sr6_info->large_max_index = 22;
-		sr6_info->high_max_index = 0;
-		sr6_info->mid_max_index = 8;
+		sr6p6_info->low_max_index = 0;
+		sr6p6_info->large_max_index = 22;
+		sr6p6_info->high_max_index = 0;
+		sr6p6_info->mid_max_index = 8;
 	}
 	if(bank->base == 0x28800000)   //Cluster 1 core 0
 	{
-		num_pages = 23;
+		num_pages = 15;
 
 		/* check that calculation result makes sense */
 		assert(num_pages > 0);
@@ -1395,7 +1395,7 @@ static int sr6_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = sr6_info->user_bank_addr;
+		bank->base = sr6p6_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1406,16 +1406,16 @@ static int sr6_probe(struct flash_bank *bank)
 		setup_sector(bank, 6, 2, 64 * 1024);
 
 		// Large Flash Blocks
-		setup_sector(bank, 8, 14, 256 * 1024);
+		setup_sector(bank, 8, 7, 256 * 1024);
 
-		sr6_info->low_max_index = 8;
-		sr6_info->large_max_index = 23;
-		sr6_info->high_max_index = 0;
-		sr6_info->mid_max_index = 0;
+		sr6p6_info->low_max_index = 8;
+		sr6p6_info->large_max_index = 15;
+		sr6p6_info->high_max_index = 0;
+		sr6p6_info->mid_max_index = 0;
 	}
 	if(bank->base == 0x28C00000)   //Cluster 1 core 1
 	{
-		num_pages = 23;
+		num_pages = 15;
 
 		/* check that calculation result makes sense */
 		assert(num_pages > 0);
@@ -1425,7 +1425,7 @@ static int sr6_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = sr6_info->user_bank_addr;
+		bank->base = sr6p6_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1436,12 +1436,12 @@ static int sr6_probe(struct flash_bank *bank)
 		setup_sector(bank, 6, 2, 64 * 1024);
 
 		// Large Flash Blocks
-		setup_sector(bank, 8, 15, 256 * 1024);
+		setup_sector(bank, 8, 7, 256 * 1024);
 
-		sr6_info->low_max_index = 0;
-		sr6_info->mid_max_index = 8;
-		sr6_info->large_max_index = 23;
-		sr6_info->high_max_index = 0;
+		sr6p6_info->low_max_index = 0;
+		sr6p6_info->mid_max_index = 8;
+		sr6p6_info->large_max_index = 15;
+		sr6p6_info->high_max_index = 0;
 
 	}
 	if(bank->base == 0x29000000)   //Cluster 2 core 0
@@ -1456,7 +1456,7 @@ static int sr6_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = sr6_info->user_bank_addr;
+		bank->base = sr6p6_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1469,10 +1469,10 @@ static int sr6_probe(struct flash_bank *bank)
 		// Large Flash Blocks
 		setup_sector(bank, 8, 7, 256 * 1024);
 
-		sr6_info->low_max_index = 8;
-		sr6_info->large_max_index = 15;
-		sr6_info->mid_max_index = 0;
-		sr6_info->high_max_index = 0;
+		sr6p6_info->low_max_index = 8;
+		sr6p6_info->large_max_index = 15;
+		sr6p6_info->mid_max_index = 0;
+		sr6p6_info->high_max_index = 0;
 
 	}
 	if(bank->base == 0x29400000)   //Cluster 2 core 1
@@ -1487,7 +1487,7 @@ static int sr6_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = sr6_info->user_bank_addr;
+		bank->base = sr6p6_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1500,10 +1500,10 @@ static int sr6_probe(struct flash_bank *bank)
 		// Large Flash Blocks
 		setup_sector(bank, 8, 7, 256 * 1024);
 
-		sr6_info->low_max_index = 0;
-		sr6_info->mid_max_index = 8;
-		sr6_info->large_max_index = 15;
-		sr6_info->high_max_index = 0;
+		sr6p6_info->low_max_index = 0;
+		sr6p6_info->mid_max_index = 8;
+		sr6p6_info->large_max_index = 15;
+		sr6p6_info->high_max_index = 0;
 	}
 	else if(bank->base == 0x29E00000) //Cluster 0 Core 0 Data Flash
 	{
@@ -1517,7 +1517,7 @@ static int sr6_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = sr6_info->user_bank_addr;
+		bank->base = sr6p6_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1525,10 +1525,10 @@ static int sr6_probe(struct flash_bank *bank)
 		// High Flash Blocks
 		setup_sector(bank, 0, 8, 64 * 1024);
 
-		sr6_info->low_max_index = 0;
-		sr6_info->large_max_index = 0;
-		sr6_info->high_max_index = 8;
-		sr6_info->mid_max_index = 0;
+		sr6p6_info->low_max_index = 0;
+		sr6p6_info->large_max_index = 0;
+		sr6p6_info->high_max_index = 8;
+		sr6p6_info->mid_max_index = 0;
 	}
 	else if(bank->base == 0x29F87000) //Cluster 0 Core 0 UTEST For Boot Record
 	{
@@ -1542,7 +1542,7 @@ static int sr6_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = sr6_info->user_bank_addr;
+		bank->base = sr6p6_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1550,10 +1550,10 @@ static int sr6_probe(struct flash_bank *bank)
 		// High Flash Blocks
 		setup_sector(bank, 0, 1, 4 * 1024);
 
-		sr6_info->low_max_index = 1;
-		sr6_info->large_max_index = 0;
-		sr6_info->high_max_index = 0;
-		sr6_info->mid_max_index = 0;
+		sr6p6_info->low_max_index = 1;
+		sr6p6_info->large_max_index = 0;
+		sr6p6_info->high_max_index = 0;
+		sr6p6_info->mid_max_index = 0;
 	}
 
 	for (i = 0; i < num_pages; i++) {
@@ -1562,7 +1562,7 @@ static int sr6_probe(struct flash_bank *bank)
 	}
 
 	/* Done */
-	sr6_info->probed = 1;
+	sr6p6_info->probed = 1;
 
 
 flash_init_error:
@@ -1577,20 +1577,20 @@ flash_init_error:
 	return err;
 }
 
-static int sr6_auto_probe(struct flash_bank *bank)
+static int sr6p6_auto_probe(struct flash_bank *bank)
 {
-	struct sr6_flash_bank *sr6_info = bank->driver_priv;
+	struct sr6p6_flash_bank *sr6p6_info = bank->driver_priv;
 
 	LOG_DEBUG("%s:%d %s()",
 		__FILE__, __LINE__, __func__);
 
-	if (sr6_info->probed)
+	if (sr6p6_info->probed)
 		return ERROR_OK;
-	return sr6_probe(bank);
+	return sr6p6_probe(bank);
 }
 
 
-static int get_sr6_info(struct flash_bank *bank, struct command_invocation *cmd)
+static int get_sr6p6_info(struct flash_bank *bank, struct command_invocation *cmd)
 {
 	LOG_DEBUG("%s:%d %s()",
 		__FILE__, __LINE__, __func__);
@@ -1602,16 +1602,16 @@ static int get_sr6_info(struct flash_bank *bank, struct command_invocation *cmd)
 }
 
 
-struct flash_driver sr6_flash = {
-	.name = "sr6",
-	.flash_bank_command = sr6_flash_bank_command,
-	.erase = sr6_erase,
-	.protect = sr6_protect,
-	.write = sr6_write,
+struct flash_driver sr6p6_flash = {
+	.name = "sr6p6",
+	.flash_bank_command = sr6p6_flash_bank_command,
+	.erase = sr6p6_erase,
+	.protect = sr6p6_protect,
+	.write = sr6p6_write,
 	.read = default_flash_read,
-	.probe = sr6_probe,
-	.auto_probe = sr6_auto_probe,
+	.probe = sr6p6_probe,
+	.auto_probe = sr6p6_auto_probe,
 	.erase_check = default_flash_blank_check,
-	.protect_check = sr6_protect_check,
-	.info = get_sr6_info,
+	.protect_check = sr6p6_protect_check,
+	.info = get_sr6p6_info,
 };

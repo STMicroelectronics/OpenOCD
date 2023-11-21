@@ -87,6 +87,7 @@ extern const struct flash_driver spc58ng_flash;
 extern const struct flash_driver spc58xn_flash;
 extern const struct flash_driver sr5_flash;
 extern const struct flash_driver sr6_flash;
+extern const struct flash_driver sr6p6_flash;
 
 /**
  * The list of built-in flash drivers.
@@ -171,6 +172,7 @@ static const struct flash_driver * const flash_drivers[] = {
 	&spc58xn_flash,
 	&sr5_flash,
 	&sr6_flash,
+	&sr6p6_flash,
 	NULL,
 };
 
