@@ -481,13 +481,13 @@ static int sr6p6_write(struct flash_bank *bank, const uint8_t *buffer,
 			/* sector found */
 			sector = i;
 			tot_sector++;
-			LOG_INFO("Sector found: %d IN_offset= 0x%08x, bank->sectors[%d].offset= 0x%08x, bank->sectors[%d].size= 0x%08x",
+			LOG_DEBUG("Sector found: %d IN_offset= 0x%08x, bank->sectors[%d].offset= 0x%08x, bank->sectors[%d].size= 0x%08x",
 						  sector, offset, i, bank->sectors[i].offset, i, bank->sectors[i].size);
 
-			LOG_INFO("bank->sectors[%d].size = %d",sector, bank->sectors[sector].size);
-			LOG_INFO("bank->sectors[%d].offset = 0x%08x", sector, bank->sectors[sector].offset);
-			LOG_INFO("bank->sectors[%d].is_erased = %d",sector, bank->sectors[sector].is_erased);
-			LOG_INFO("bank->sectors[%d].is_protected = %d", sector, bank->sectors[sector].is_protected);
+			LOG_DEBUG("bank->sectors[%d].size = %d",sector, bank->sectors[sector].size);
+			LOG_DEBUG("bank->sectors[%d].offset = 0x%08x", sector, bank->sectors[sector].offset);
+			LOG_DEBUG("bank->sectors[%d].is_erased = %d",sector, bank->sectors[sector].is_erased);
+			LOG_DEBUG("bank->sectors[%d].is_protected = %d", sector, bank->sectors[sector].is_protected);
 
 			/* how many sectors */
 			if(count > bank->sectors[sector].size)
@@ -807,13 +807,13 @@ static int sr6p6_writeToErase(struct flash_bank *bank, const uint8_t *buffer,
 			/* sector found */
 			sector = i;
 			tot_sector++;
-			LOG_INFO("Sector found: %d IN_offset= 0x%08x, bank->sectors[%d].offset= 0x%08x, bank->sectors[%d].size= 0x%08x",
+			LOG_DEBUG("Sector found: %d IN_offset= 0x%08x, bank->sectors[%d].offset= 0x%08x, bank->sectors[%d].size= 0x%08x",
 						  sector, offset, i, bank->sectors[i].offset, i, bank->sectors[i].size);
 
-			LOG_INFO("bank->sectors[%d].size = %d",sector, bank->sectors[sector].size);
-			LOG_INFO("bank->sectors[%d].offset = 0x%08x", sector, bank->sectors[sector].offset);
-			LOG_INFO("bank->sectors[%d].is_erased = %d",sector, bank->sectors[sector].is_erased);
-			LOG_INFO("bank->sectors[%d].is_protected = %d", sector, bank->sectors[sector].is_protected);
+			LOG_DEBUG("bank->sectors[%d].size = %d",sector, bank->sectors[sector].size);
+			LOG_DEBUG("bank->sectors[%d].offset = 0x%08x", sector, bank->sectors[sector].offset);
+			LOG_DEBUG("bank->sectors[%d].is_erased = %d",sector, bank->sectors[sector].is_erased);
+			LOG_DEBUG("bank->sectors[%d].is_protected = %d", sector, bank->sectors[sector].is_protected);
 
 			/* how many sectors */
 			if(count > bank->sectors[sector].size)
