@@ -158,8 +158,12 @@ int dap_cleanup_all(void)
 	list_for_each_entry_safe(obj, tmp, &all_dap, lh) {
 		dap = &obj->dap;
 		for (unsigned int i = 0; i <= DP_APSEL_MAX; i++) {
-			if (dap->ap[i].refcount != 0)
-				LOG_ERROR("BUG: refcount AP#%u still %u at exit", i, dap->ap[i].refcount);
+			if (dap->ap[i].refcount != 0) {
+				if (strstr(obj->name, "sr5e1"))
+					LOG_WARNING("refcount AP#%u still %u at exit", i, dap->ap[i].refcount);
+				else
+					LOG_ERROR("BUG: refcount AP#%u still %u at exit", i, dap->ap[i].refcount);
+			}
 		}
 		if (dap->ops && dap->ops->quit)
 			dap->ops->quit(dap);
