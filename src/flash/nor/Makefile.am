@@ -87,7 +87,8 @@ NOR_DRIVERS = \
 	%D%/spc58xn.c \
 	%D%/sr5.c \
 	%D%/sr6.c \
-	%D%/sr6p6.c
+	%D%/sr6p6.c \
+	%D%/sr6p3.c
 
 NORHEADERS = \
 	%D%/core.h \
