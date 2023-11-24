@@ -473,7 +473,9 @@ static int sr6p7_write(struct flash_bank *bank, const uint8_t *buffer,
 			return err;
 	}
 
-
+	for (i = 0; i < bank->num_sectors; i++) {
+			bank->sectors[i].is_protected = 0;
+	}
 
 	for(i = 0; i < bank->num_sectors; i++)
 	{
@@ -1134,6 +1136,8 @@ static int sr6p7_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	for (i=first; i<= last; i++)
 	{
 		sr6p7_writeToErase(bank, buffer, bank->sectors[i].offset, bank->sectors[i].size);
+		bank->sectors[i].is_erased = 1;
+		bank->sectors[i].is_protected = 0;
 	}
 
 	return err;
@@ -1565,7 +1569,7 @@ static int sr6p7_probe(struct flash_bank *bank)
 
 	for (i = 0; i < num_pages; i++) {
 		bank->sectors[i].is_erased = -1;
-		bank->sectors[i].is_protected = 0;
+		bank->sectors[i].is_protected = 1;
 	}
 
 	/* Done */
