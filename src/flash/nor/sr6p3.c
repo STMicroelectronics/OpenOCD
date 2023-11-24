@@ -1696,4 +1696,5 @@ struct flash_driver sr6p3_flash = {
 	.erase_check = default_flash_blank_check,
 	.protect_check = sr6p3_protect_check,
 	.info = get_sr6p3_info,
+	.free_driver_priv = default_flash_free_driver_priv,
 };
