@@ -371,8 +371,8 @@ flash_getlock_error:
 static int sr6p3_write(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
-	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
-	LOG_INFO("%s:%d %s() offset = 0x%08x count = 0x%08x", __FILE__, __LINE__, __func__, offset, count);
+	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
+	LOG_DEBUG("%s:%d %s() offset = 0x%08x count = 0x%08x", __FILE__, __LINE__, __func__, offset, count);
 
 	unsigned int i, sector = 0;
 
@@ -768,8 +768,8 @@ flash_write_error:
 static int sr6p3_writeToErase(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
-	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
-	LOG_INFO("%s:%d %s() offset = 0x%08x count = 0x%08x", __FILE__, __LINE__, __func__, offset, count);
+	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
+	LOG_DEBUG("%s:%d %s() offset = 0x%08x count = 0x%08x", __FILE__, __LINE__, __func__, offset, count);
 
 	unsigned int i, sector = 0;
 
@@ -936,7 +936,7 @@ static int sr6p3_erase(struct flash_bank *bank, unsigned int first, unsigned int
 	struct target *target = bank->target;
 	struct sr6p3_flash_bank *sr6p3_info = bank->driver_priv;
 
-	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
+	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
 	if (target->state != TARGET_HALTED) {
 		LOG_ERROR("Target not halted");
