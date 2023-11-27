@@ -353,7 +353,7 @@ static int spc58x_erase(struct flash_bank *bank, unsigned int first, unsigned in
 
 	SSD_CONFIG *ssd = &spc58x_info->ssd;
 
-	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
+	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
 	if (target->state != TARGET_HALTED) {
 		LOG_ERROR("Target not halted");
@@ -1277,8 +1277,8 @@ flash_write_error:
 static int spc58x_write(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
-	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
-	LOG_INFO("%s:%d %s() offset = 0x%08x count = 0x%08x", __FILE__, __LINE__, __func__, offset, count);
+	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
+	LOG_DEBUG("%s:%d %s() offset = 0x%08x count = 0x%08x", __FILE__, __LINE__, __func__, offset, count);
 
 	unsigned int i, sector = 0;
 
@@ -1342,13 +1342,13 @@ static int spc58x_write(struct flash_bank *bank, const uint8_t *buffer,
 			/* sector found */
 			sector = i;
 			tot_sector++;
-			LOG_INFO("Sector found: %d IN_offset= 0x%08x, bank->sectors[%d].offset= 0x%08x, bank->sectors[%d].size= 0x%08x",
+			LOG_DEBUG("Sector found: %d IN_offset= 0x%08x, bank->sectors[%d].offset= 0x%08x, bank->sectors[%d].size= 0x%08x",
 						  sector, offset, i, bank->sectors[i].offset, i, bank->sectors[i].size);
 
-			LOG_INFO("bank->sectors[%d].size = %d",sector, bank->sectors[sector].size);
-			LOG_INFO("bank->sectors[%d].offset = 0x%08x", sector, bank->sectors[sector].offset);
-			LOG_INFO("bank->sectors[%d].is_erased = %d",sector, bank->sectors[sector].is_erased);
-			LOG_INFO("bank->sectors[%d].is_protected = %d", sector, bank->sectors[sector].is_protected);
+			LOG_DEBUG("bank->sectors[%d].size = %d",sector, bank->sectors[sector].size);
+			LOG_DEBUG("bank->sectors[%d].offset = 0x%08x", sector, bank->sectors[sector].offset);
+			LOG_DEBUG("bank->sectors[%d].is_erased = %d",sector, bank->sectors[sector].is_erased);
+			LOG_DEBUG("bank->sectors[%d].is_protected = %d", sector, bank->sectors[sector].is_protected);
 
 			/* how many sectors */
 			if(count > bank->sectors[sector].size)
