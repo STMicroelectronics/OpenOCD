@@ -595,13 +595,13 @@ static int stm32h5x_mass_erase(struct flash_bank *bank, enum stm32h5x_bank_id ba
 
 	switch (bank_id) {
 	case STM32_BANK1:
-		flash_cr_op = FLASH_BER;
+		flash_cr_op = FLASH_BER | FLASH_STRT;
 		break;
 	case STM32_BANK2:
-		flash_cr_op = FLASH_BER | FLASH_BKSEL;
+		flash_cr_op = FLASH_BER | FLASH_BKSEL | FLASH_STRT;
 		break;
 	case STM32_ALL_BANKS:
-		flash_cr_op = FLASH_MER;
+		flash_cr_op = FLASH_MER | FLASH_STRT;
 		break;
 	default:
 		LOG_ERROR("incorrect bank_id");
