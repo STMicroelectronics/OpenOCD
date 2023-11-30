@@ -1410,7 +1410,7 @@ static int sr6_probe(struct flash_bank *bank)
 		setup_sector(bank, 6, 2, 64 * 1024);
 
 		// Large Flash Blocks
-		setup_sector(bank, 8, 14, 256 * 1024);
+		setup_sector(bank, 8, 15, 256 * 1024);
 
 		sr6_info->low_max_index = 8;
 		sr6_info->large_max_index = 23;
