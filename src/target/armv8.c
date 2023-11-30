@@ -1667,7 +1667,10 @@ struct reg_cache *armv8_build_reg_cache(struct target *target)
 		{
 			if (((i >= ARMV8_R15) && (i <= ARMV8_R30)) || ((i>=ARMV8_ELR_EL3)&& (i<=ARMV8_SPSR_EL3)))
 			{
-				reg_list32[i].exist = false;
+				if (i<num_regs32)
+				{
+					reg_list32[i].exist = false;
+				}
 			}
 			else
 			{
