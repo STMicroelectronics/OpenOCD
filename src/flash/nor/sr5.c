@@ -329,7 +329,7 @@ static int sr5_erase(struct flash_bank *bank, unsigned int first, unsigned int l
 
 	SSD_CONFIG *ssd = &sr5_info->ssd;
 
-	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
+	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
 	if (target->state != TARGET_HALTED) {
 		LOG_ERROR("Target not halted");
@@ -757,8 +757,8 @@ static int sr5_protect(struct flash_bank *bank, int set, unsigned int first, uns
 static int sr5_write(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
-	LOG_INFO("%s:%d %s()", __FILE__, __LINE__, __func__);
-	LOG_INFO("%s:%d %s() offset = 0x%08x count = 0x%08x", __FILE__, __LINE__, __func__, offset, count);
+	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
+	LOG_DEBUG("%s:%d %s() offset = 0x%08x count = 0x%08x", __FILE__, __LINE__, __func__, offset, count);
 
 	unsigned int i, sector = 0;
 
@@ -1509,6 +1509,7 @@ static int get_sr5_info(struct flash_bank *bank, struct command_invocation *cmd)
 
 struct flash_driver sr5_flash = {
 	.name = "sr5",
+	.usage = "",
 	.flash_bank_command = sr5_flash_bank_command,
 	.erase = sr5_erase,
 	.protect = sr5_protect,
