@@ -602,45 +602,58 @@ static int armv8_read_reg_simdfp_aarch32(struct armv8_common *armv8, int regnum,
 	uint32_t value_r0 = 0, value_r1 = 0;
 	unsigned num = (regnum - ARMV8_V0) << 1;
 
-	switch (regnum) {
-	case ARMV8_V0 ... ARMV8_V15:
-		/* we are going to write R1, mark it dirty */
-		reg_r1->dirty = true;
-		/* move from double word register to r0:r1: "vmov r0, r1, vm"
-		 * then read r0 via dcc
-		 */
-		retval = dpm->instr_read_data_r0(dpm,
-				ARMV4_5_VMOV(1, 1, 0, (num >> 4), (num & 0xf)),
-				&value_r0);
-		if (retval != ERROR_OK)
-			return retval;
-		/* read r1 via dcc */
-		retval = dpm->instr_read_data_dcc(dpm,
-				ARMV4_5_MCR(14, 0, 1, 0, 5, 0),
-				&value_r1);
-		if (retval != ERROR_OK)
-			return retval;
-		*lvalue = value_r1;
-		*lvalue = ((*lvalue) << 32) | value_r0;
+	if ((strncmp(target_type_name(dpm->arm->target), "armv8r", 6) != 0) || (regnum < ARMV8_V8))
+	{
+//		if (regnum < ARMV8_V7 )
+//		{
 
-		num++;
-		/* repeat above steps for high 64 bits of V register */
-		retval = dpm->instr_read_data_r0(dpm,
-				ARMV4_5_VMOV(1, 1, 0, (num >> 4), (num & 0xf)),
-				&value_r0);
-		if (retval != ERROR_OK)
-			return retval;
-		retval = dpm->instr_read_data_dcc(dpm,
-				ARMV4_5_MCR(14, 0, 1, 0, 5, 0),
-				&value_r1);
-		if (retval != ERROR_OK)
-			return retval;
-		*hvalue = value_r1;
-		*hvalue = ((*hvalue) << 32) | value_r0;
-		break;
-	default:
-		retval = ERROR_FAIL;
-		break;
+			switch (regnum) {
+			case ARMV8_V0 ... ARMV8_V15:
+				/* we are going to write R1, mark it dirty */
+				reg_r1->dirty = true;
+				/* move from double word register to r0:r1: "vmov r0, r1, vm"
+				 * then read r0 via dcc
+				 */
+				retval = dpm->instr_read_data_r0(dpm,
+						ARMV4_5_VMOV(1, 1, 0, (num >> 4), (num & 0xf)),
+						&value_r0);
+				if (retval != ERROR_OK)
+					return retval;
+				/* read r1 via dcc */
+				retval = dpm->instr_read_data_dcc(dpm,
+						ARMV4_5_MCR(14, 0, 1, 0, 5, 0),
+						&value_r1);
+				if (retval != ERROR_OK)
+					return retval;
+				*lvalue = value_r1;
+				*lvalue = ((*lvalue) << 32) | value_r0;
+
+				num++;
+				/* repeat above steps for high 64 bits of V register */
+				retval = dpm->instr_read_data_r0(dpm,
+						ARMV4_5_VMOV(1, 1, 0, (num >> 4), (num & 0xf)),
+						&value_r0);
+				if (retval != ERROR_OK)
+					return retval;
+				retval = dpm->instr_read_data_dcc(dpm,
+						ARMV4_5_MCR(14, 0, 1, 0, 5, 0),
+						&value_r1);
+				if (retval != ERROR_OK)
+					return retval;
+				*hvalue = value_r1;
+				*hvalue = ((*hvalue) << 32) | value_r0;
+				break;
+			default:
+				retval = ERROR_FAIL;
+				break;
+			}
+//		}
+	}
+	else
+	{
+		*lvalue = 0;
+		*hvalue = 0;
+		retval = ERROR_OK;
 	}
 
 	return retval;
@@ -1665,16 +1678,25 @@ struct reg_cache *armv8_build_reg_cache(struct target *target)
 
 		if (strncmp(target_type_name(target), "armv8r", 6) == 0)
 		{
-			if (((i >= ARMV8_R15) && (i <= ARMV8_R30)) || ((i>=ARMV8_ELR_EL3)&& (i<=ARMV8_SPSR_EL3)))
+			if (((i >= ARMV8_R15) && (i <= ARMV8_R30)) || ((i>=ARMV8_ELR_EL3)&& (i<=ARMV8_SPSR_EL3)) || (i>0x20))
 			{
 				if (i<num_regs32)
 				{
 					reg_list32[i].exist = false;
 				}
 			}
+			if (i >= ARMV8_V0 && i <= ARMV8_FPCR)
+			{
+				reg_list[i].exist = false;
+			}
 			else
 			{
-				/* Skip reading FP-SIMD registers */
+				reg_list[i].exist = true;
+			}
+/*
+			else
+			{
+				// Skip reading FP-SIMD registers
 				if (i >= ARMV8_V0 && i <= ARMV8_FPCR)
 				{
 					reg_list[i].exist = false;
@@ -1684,6 +1706,7 @@ struct reg_cache *armv8_build_reg_cache(struct target *target)
 					reg_list[i].exist = true;
 				}
 			}
+*/
 		}
 		else
 		{
