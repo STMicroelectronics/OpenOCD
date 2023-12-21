@@ -1462,6 +1462,8 @@ static int sr6p3_probe(struct flash_bank *bank)
 	LOG_DEBUG("SDD->programmableSize   = 0x%08x", fast_target_buffer_get_u32(&ssd->programmableSize, true));
 	LOG_DEBUG("SDD->BDMEnable     = 0x%u", ssd->BDMEnable);
 
+	// Blocks at 256Kb are 20 from 0 to 23 with a gap from 10 to 13
+	ssd->n256BlockNum = 24;
 
 	if(bank->base == 0x28000000)   //Cluster 0 core 0
 	{
