@@ -1202,7 +1202,7 @@ int armv8_arch_state(struct target *target)
 	else
 		arm_arch_state(target);
 
-	LOG_USER("MMU: %s, D-Cache: %s, I-Cache: %s",
+	LOG_DEBUG("MMU: %s, D-Cache: %s, I-Cache: %s",
 		state[armv8->armv8_mmu.mmu_enabled],
 		state[armv8->armv8_mmu.armv8_cache.d_u_cache_enabled],
 		state[armv8->armv8_mmu.armv8_cache.i_cache_enabled]);

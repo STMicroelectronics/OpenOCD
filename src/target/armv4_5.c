@@ -792,7 +792,7 @@ int arm_arch_state(struct target *target)
 	if (target->semihosting && target->semihosting->hit_fileio)
 		return ERROR_OK;
 
-	LOG_USER("target halted in %s state due to %s, current mode: %s\n"
+	LOG_DEBUG("target halted in %s state due to %s, current mode: %s\n"
 		"cpsr: 0x%8.8" PRIx32 " pc: 0x%8.8" PRIx32 "%s%s",
 		arm_state_strings[arm->core_state],
 		debug_reason_name(target),
