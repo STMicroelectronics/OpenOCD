@@ -20,7 +20,7 @@
 #define TRUE (!FALSE)
 #endif
 
-/*
+#if defined __linux__ || defined __APPLE__
 typedef unsigned char BOOL;
 
 typedef signed char INT8;
@@ -33,20 +33,14 @@ typedef unsigned short UINT16;
 typedef volatile signed short VINT16;
 typedef volatile unsigned short VUINT16;
 
-<<<<<<< HEAD
-typedef signed long INT32;
-typedef unsigned long UINT32;
-typedef volatile signed long VINT32;
-typedef volatile unsigned long VUINT32;
-=======
 typedef signed int INT32;
 typedef unsigned int UINT32;
 typedef volatile signed int VINT32;
 typedef volatile unsigned int VUINT32;
->>>>>>> origin/spc5
+#endif
 
 #define ASM_KEYWORD __asm
-*/
+
 /*************************************************************************/
 /*                  Offsets of NVM Control Registers                     */
 /*************************************************************************/
