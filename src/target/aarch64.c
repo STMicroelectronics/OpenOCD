@@ -2135,6 +2135,9 @@ static int aarch64_write_cpu_memory(struct target *target,
 	struct arm *arm = &armv8->arm;
 	uint32_t dscr;
 
+	struct target *axi_target = all_targets;
+	char *axifound = NULL;
+
 	if (target->state != TARGET_HALTED) {
 		LOG_WARNING("target not halted");
 		return ERROR_TARGET_NOT_HALTED;
@@ -2202,8 +2205,22 @@ static int aarch64_write_cpu_memory(struct target *target,
 	dpm->dscr = dscr;
 	if (dscr & (DSCR_ERR | DSCR_SYS_ERROR_PEND)) {
 		/* Abort occurred - clear it and exit */
-		LOG_ERROR("abort occurred - dscr = 0x%08" PRIx32, dscr);
 		armv8_dpm_handle_exception(dpm, true);
+
+		/* at last try using mem axi access, if defined in target configuration file */
+		while (axi_target) {
+			axifound = strstr(axi_target->cmd_name, ".axi");
+			if (axifound != NULL)
+				break;
+			axi_target = axi_target->next;
+		}
+		if (axifound != NULL) {
+			LOG_DEBUG("Writing (using AXI_AP) memory address 0x%08" PRIx64 " size %" PRIu32 " count %" PRIu32,
+					address, size, count);
+			return axi_target->type->write_memory(axi_target, address, size, count, buffer);
+		}
+
+		LOG_ERROR("abort occurred - dscr = 0x%08" PRIx32, dscr);
 		return ERROR_FAIL;
 	}
 
@@ -2350,6 +2367,9 @@ static int aarch64_read_cpu_memory(struct target *target,
 	struct arm *arm = &armv8->arm;
 	uint32_t dscr;
 
+	struct target *axi_target = all_targets;
+	char *axifound = NULL;
+
 	LOG_DEBUG("Reading CPU memory address 0x%016" PRIx64 " size %" PRIu32 " count %" PRIu32,
 			address, size, count);
 
@@ -2421,8 +2441,22 @@ static int aarch64_read_cpu_memory(struct target *target,
 
 	if (dscr & (DSCR_ERR | DSCR_SYS_ERROR_PEND)) {
 		/* Abort occurred - clear it and exit */
-		LOG_ERROR("abort occurred - dscr = 0x%08" PRIx32, dscr);
 		armv8_dpm_handle_exception(dpm, true);
+
+		/* at last try using mem axi access, if defined in target configuration file */
+		while (axi_target) {
+			axifound = strstr(axi_target->cmd_name, ".axi");
+			if (axifound != NULL)
+				break;
+			axi_target = axi_target->next;
+		}
+		if (axifound != NULL) {
+			LOG_DEBUG("Reading (using AXI_AP) memory address 0x%08" PRIx64 " size %" PRIu32 " count %" PRIu32,
+						address, size, count);
+			return axi_target->type->read_memory(axi_target, address, size, count, buffer);
+		}
+
+		LOG_ERROR("abort occurred - dscr = 0x%08" PRIx32, dscr);
 		return ERROR_FAIL;
 	}
 
