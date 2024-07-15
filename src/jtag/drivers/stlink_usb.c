@@ -1603,7 +1603,10 @@ static int stlink_usb_mode_enter(void *handle, enum stlink_mode type)
 				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV1_ENTER;
 			else
 				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV2_ENTER;
-			h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_ENTER_JTAG_NO_RESET;
+			if (jtag_get_srst())
+				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_ENTER_JTAG_RESET;
+			else
+				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_ENTER_JTAG_NO_RESET;
 			break;
 		case STLINK_MODE_DEBUG_SWD:
 			h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_COMMAND;
@@ -4232,7 +4235,7 @@ static int stlink_dap_check_reconnect(struct adiv5_dap *dap)
 {
 	int retval;
 
-	if (!dap->do_reconnect)
+	if (!dap->do_reconnect && !stlink_dap_handle->reconnect_pending)
 		return ERROR_OK;
 
 	retval = stlink_dap_reinit_interface();
@@ -5193,9 +5196,23 @@ static int stlink_dap_quit(void)
 static int stlink_dap_reset(int req_trst, int req_srst)
 {
 	LOG_DEBUG("stlink_dap_reset(%d)", req_srst);
-	return stlink_usb_assert_srst(stlink_dap_handle,
-		req_srst ? STLINK_DEBUG_APIV2_DRIVE_NRST_LOW
-				 : STLINK_DEBUG_APIV2_DRIVE_NRST_HIGH);
+
+	if (req_srst) {
+		enum reset_types cfg = jtag_get_reset_config();
+
+		if ((cfg & RESET_SRST_PULLS_TRST) || !(cfg & RESET_SRST_NO_GATING)) {
+			/*
+			 * srst will probably reset the TAP/DAP (e.g. SWD back in JTAG mode).
+			 * Leave current mode and force a reconnect at next queue flush.
+			 */
+			stlink_usb_mode_leave(stlink_dap_handle, stlink_dap_handle->st_mode);
+			stlink_dap_handle->reconnect_pending = true;
+		}
+
+		return stlink_usb_assert_srst(stlink_dap_handle, STLINK_DEBUG_APIV2_DRIVE_NRST_LOW);
+	}
+
+	return stlink_usb_assert_srst(stlink_dap_handle, STLINK_DEBUG_APIV2_DRIVE_NRST_HIGH);
 }
 
 /** */
