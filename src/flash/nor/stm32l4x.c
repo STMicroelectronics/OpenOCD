@@ -299,12 +299,20 @@ static const struct stm32l4_rev stm32c01xx_revs[] = {
 	{ 0x1000, "A" }, { 0x1001, "Z" },
 };
 
+static const struct stm32l4_rev stm32c03xx_revs[] = {
+	{ 0x1000, "A" }, { 0x1001, "Z" },
+};
+
+static const struct stm32l4_rev stm32c05xx_revs[] = {
+	{ 0x1000, "A" },
+};
+
 static const struct stm32l4_rev stm32c07xx_revs[] = {
 	{ 0x1000, "A" },
 };
 
-static const struct stm32l4_rev stm32c03xx_revs[] = {
-	{ 0x1000, "A" }, { 0x1001, "Z" },
+static const struct stm32l4_rev stm32c09xx_revs[] = {
+	{ 0x1000, "A" },
 };
 
 static const struct stm32l4_rev stm32g05_g06xx_revs[] = {
@@ -452,6 +460,30 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .num_revs              = ARRAY_SIZE(stm32c03xx_revs),
 	  .device_str            = "STM32C03xx",
 	  .max_flash_size_kb     = 32,
+	  .flags                 = F_NONE,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x1FFF75A0,
+	  .otp_base              = 0x1FFF7000,
+	  .otp_size              = 1024,
+	},
+	{
+	  .id                    = DEVID_STM32C05XX,
+	  .revs                  = stm32c05xx_revs,
+	  .num_revs              = ARRAY_SIZE(stm32c05xx_revs),
+	  .device_str            = "STM32C05xx",
+	  .max_flash_size_kb     = 64,
+	  .flags                 = F_NONE,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x1FFF75A0,
+	  .otp_base              = 0x1FFF7000,
+	  .otp_size              = 1024,
+	},
+	{
+	  .id                    = DEVID_STM32C09XX,
+	  .revs                  = stm32c09xx_revs,
+	  .num_revs              = ARRAY_SIZE(stm32c09xx_revs),
+	  .device_str            = "STM32C09xx",
+	  .max_flash_size_kb     = 256,
 	  .flags                 = F_NONE,
 	  .flash_regs_base       = 0x40022000,
 	  .fsize_addr            = 0x1FFF75A0,
@@ -2099,7 +2131,9 @@ static int stm32l4_probe(struct flash_bank *bank)
 	case DEVID_STM32L43_L44XX:
 	case DEVID_STM32C01XX:
 	case DEVID_STM32C03XX:
+	case DEVID_STM32C05XX:
 	case DEVID_STM32C07XX:
+	case DEVID_STM32C09XX:
 	case DEVID_STM32G05_G06XX:
 	case DEVID_STM32G07_G08XX:
 	case DEVID_STM32U03XX:
