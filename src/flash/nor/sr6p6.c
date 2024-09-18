@@ -661,9 +661,35 @@ static int sr6p6_write(struct flash_bank *bank, const uint8_t *buffer,
 
 	if(bytes_remain)
 	{
+		uint8_t padding_bytes;
+		uint32_t ind;
+		uint8_t * loc_buffer;
+		padding_bytes = bytes_remain % 4;
 
-		err = target_write_buffer(target, source->address,
-				bytes_remain, (uint8_t *)(buffer  + (i * chunk_size)));
+		if (padding_bytes > 0)
+		{
+			/* allocate new buffer */
+			loc_buffer = malloc(bytes_remain + 4 - padding_bytes);
+
+			memset(&loc_buffer[bytes_remain], 0xFF, (4 - padding_bytes));
+
+			for (ind = 0; ind < bytes_remain; ind++)
+			{
+				loc_buffer[ind] = buffer[(i * chunk_size) + ind];
+			}
+
+			bytes_remain += (4 - padding_bytes);
+
+			err = target_write_buffer(target, source->address,
+					bytes_remain, (uint8_t *)(loc_buffer));
+
+			free(loc_buffer);
+		}
+		else
+		{
+			err = target_write_buffer(target, source->address,
+			     	bytes_remain, (uint8_t *)(buffer  + (i * chunk_size)));
+		}
 		if (err != ERROR_OK) {
 			target_free_working_area(target, write_algorithm);
 			target_free_working_area(target, source);

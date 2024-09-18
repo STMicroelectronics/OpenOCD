@@ -65,6 +65,7 @@ FLASH_BANK_COMMAND_HANDLER(sr6p3_flash_bank_command)
 	sr6p3_info->probed = 0;
 	sr6p3_info->user_bank_addr = bank->base;
 	sr6p3_info->user_bank_size = bank->size;
+	bank->default_padded_value = bank->erased_value = 0xFF;
 
 	return ERROR_OK;
 }
@@ -419,9 +420,14 @@ static int sr6p3_write(struct flash_bank *bank, const uint8_t *buffer,
     }
     else
     {
+    	/*
     	size = count;
     	bytes_remain = 0;
     	chunk_number = 1;
+    	*/
+    	size = count;
+    	bytes_remain = size;
+    	chunk_number = 0;
     }
 
 	if (target->state != TARGET_HALTED) {
@@ -656,9 +662,35 @@ static int sr6p3_write(struct flash_bank *bank, const uint8_t *buffer,
 
 	if(bytes_remain)
 	{
+		uint8_t padding_bytes;
+		uint32_t ind;
+		uint8_t * loc_buffer;
+		padding_bytes = bytes_remain % 4;
 
-		err = target_write_buffer(target, source->address,
-				bytes_remain, (uint8_t *)(buffer  + (i * chunk_size)));
+		if (padding_bytes > 0)
+		{
+			/* allocate new buffer */
+			loc_buffer = malloc(bytes_remain + 4 - padding_bytes);
+
+			memset(&loc_buffer[bytes_remain], 0xFF, (4 - padding_bytes));
+
+			for (ind = 0; ind < bytes_remain; ind++)
+			{
+				loc_buffer[ind] = buffer[(i * chunk_size) + ind];
+			}
+
+			bytes_remain += (4 - padding_bytes);
+
+			err = target_write_buffer(target, source->address,
+					bytes_remain, (uint8_t *)(loc_buffer));
+
+			free(loc_buffer);
+		}
+		else
+		{
+			err = target_write_buffer(target, source->address,
+			     	bytes_remain, (uint8_t *)(buffer  + (i * chunk_size)));
+		}
 		if (err != ERROR_OK) {
 			target_free_working_area(target, write_algorithm);
 			target_free_working_area(target, source);
