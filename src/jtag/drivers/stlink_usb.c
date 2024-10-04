@@ -4180,11 +4180,8 @@ static int stlink_dap_reinit_interface(void)
 	stlink_dap_handle->reconnect_pending = false;
 	/* on new FW, calling mode-leave closes all the opened AP; reopen them! */
 	if (stlink_dap_handle->version.flags & STLINK_F_HAS_AP_INIT)
-		for (unsigned int apsel = 0; apsel <= DP_APSEL_MAX; apsel++)
-			if (test_bit(apsel, opened_ap)) {
-				clear_bit(apsel, opened_ap);
-				stlink_dap_open_ap(apsel);
-			}
+		bitmap_zero(opened_ap, DP_APSEL_MAX + 1);
+
 	return ERROR_OK;
 }
 
