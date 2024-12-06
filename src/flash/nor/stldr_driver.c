@@ -262,7 +262,7 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 				return ERROR_FAIL;
 			}
 
-			struct stldr_section *section = calloc(sizeof(struct stldr_section), 1);
+			struct stldr_section *section = calloc(1, sizeof(struct stldr_section));
 			if (!section) {
 				free(content);
 				return ERROR_FAIL;
@@ -396,7 +396,7 @@ FLASH_BANK_COMMAND_HANDLER(stldr_flash_bank_command)
 	if (CMD_ARGC != 6 && CMD_ARGC != 7)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
-	stldr_info = calloc(sizeof(struct stldr_flash_bank), 1);
+	stldr_info = calloc(1, sizeof(struct stldr_flash_bank));
 	if (!stldr_info) {
 		LOG_ERROR("Out of memory");
 		return ERROR_FAIL;

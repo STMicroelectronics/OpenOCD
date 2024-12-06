@@ -381,7 +381,7 @@ static const struct reg_arch_type nds32_reg_access_type_64 = {
 static struct reg_cache *nds32_build_reg_cache(struct target *target,
 		struct nds32 *nds32)
 {
-	struct reg_cache *cache = calloc(sizeof(struct reg_cache), 1);
+	struct reg_cache *cache = calloc(1, sizeof(struct reg_cache));
 	struct reg *reg_list = calloc(TOTAL_REG_NUM, sizeof(struct reg));
 	struct nds32_reg *reg_arch_info = calloc(TOTAL_REG_NUM, sizeof(struct nds32_reg));
 	int i;
@@ -409,7 +409,7 @@ static struct reg_cache *nds32_build_reg_cache(struct target *target,
 		reg_list[i].size = nds32_reg_size(i);
 		reg_list[i].arch_info = &reg_arch_info[i];
 
-		reg_list[i].reg_data_type = calloc(sizeof(struct reg_data_type), 1);
+		reg_list[i].reg_data_type = calloc(1, sizeof(struct reg_data_type));
 
 		if (reg_arch_info[i].num >= FD0 && reg_arch_info[i].num <= FD31) {
 			reg_list[i].value = reg_arch_info[i].value;
