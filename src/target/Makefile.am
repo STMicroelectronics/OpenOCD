@@ -134,7 +134,8 @@ MIPS64_SRC = \
 	%D%/trace.c \
 	%D%/mips_ejtag.c
 POWERPC_SRC = \
-	%D%/powerpc.c
+	%D%/powerpc.c \
+	%D%/powerpc56.c
 
 STM8_SRC = \
 	%D%/stm8.c
