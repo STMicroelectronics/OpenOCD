@@ -1779,7 +1779,7 @@ static int powerpc56_once_debug_enter(struct target *target)
 
 	/*Set DBCR0[EDM] [TRAP]*/
 	value = 0x81000000;
-	err = powerpc56_once_reg_write(target->tap, 1, E200Zxx_ONCE_EDBCR0, &value);
+	err = powerpc56_once_reg_write(target->tap, 1, E200Zxx_ONCE_DBCR0, &value);
 	if (err != ERROR_OK)
 		return err;
 

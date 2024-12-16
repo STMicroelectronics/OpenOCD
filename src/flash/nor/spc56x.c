@@ -48,7 +48,7 @@ typedef enum _c55_page_size
 }  C55_PAGE_SIZE_TYPE;
 
 
-struct spc564b_flash_bank {
+struct spc56x_flash_bank {
 	int probed;
 	uint32_t user_bank_addr;
 	uint32_t user_bank_size;
@@ -62,9 +62,9 @@ struct spc564b_flash_bank {
 };
 
 /* flash bank spc58xc <base> <size> 0 0 <target#> */
-FLASH_BANK_COMMAND_HANDLER(spc564b_flash_bank_command)
+FLASH_BANK_COMMAND_HANDLER(spc56x_flash_bank_command)
 {
-	struct spc564b_flash_bank *spc564b_info;
+	struct spc56x_flash_bank *spc56x_info;
 
 	LOG_DEBUG("%s:%d %s()",
 		__FILE__, __LINE__, __func__);
@@ -72,34 +72,34 @@ FLASH_BANK_COMMAND_HANDLER(spc564b_flash_bank_command)
 	if (CMD_ARGC < 6)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
-	spc564b_info = malloc(sizeof(struct spc564b_flash_bank));
-	bank->driver_priv = spc564b_info;
+	spc56x_info = malloc(sizeof(struct spc56x_flash_bank));
+	bank->driver_priv = spc56x_info;
 
-	spc564b_info->probed = 0;
-	spc564b_info->user_bank_addr = bank->base;
-	spc564b_info->user_bank_size = bank->size;
+	spc56x_info->probed = 0;
+	spc56x_info->user_bank_addr = bank->base;
+	spc56x_info->user_bank_size = bank->size;
 
 	return ERROR_OK;
 }
 
-static int spc564b_protect_check(struct flash_bank *bank)
+static int spc56x_protect_check(struct flash_bank *bank)
 {
 	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
 	return ERROR_OK;
 }
 
-static int spc564b_setlock(struct flash_bank *bank, uint32_t block_space, uint32_t lock_state)
+static int spc56x_setlock(struct flash_bank *bank, uint32_t block_space, uint32_t lock_state)
 {
 	int err;
 	uint32_t pass;
 	struct target *target = bank->target;
-	struct spc564b_flash_bank *spc564b_info = bank->driver_priv;
+	struct spc56x_flash_bank *spc56x_info = bank->driver_priv;
 	struct working_area *ssd_config;
 	struct working_area *setlock_algorithm;
 	struct reg_param reg_params[6];
 	struct powerpc_algorithm powerpc_info;
-	SSD_CONFIG *ssd = &spc564b_info->ssd;
+	SSD_CONFIG *ssd = &spc56x_info->ssd;
 
 	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
@@ -209,12 +209,12 @@ static int spc564b_setlock(struct flash_bank *bank, uint32_t block_space, uint32
 	return err;
 }
 
-static int spc564b_getlock(struct flash_bank *bank,
+static int spc56x_getlock(struct flash_bank *bank,
 		uint8_t block_space, uint32_t *lock_state)
 {
 	int err;
 	struct target *target = bank->target;
-	struct spc564b_flash_bank *spc564b_info = bank->driver_priv;
+	struct spc56x_flash_bank *spc56x_info = bank->driver_priv;
 	struct working_area *ssd_config;
 
 	struct working_area *getlock_working_area;
@@ -223,7 +223,7 @@ static int spc564b_getlock(struct flash_bank *bank,
 	struct working_area *getlock_algorithm;
 	struct reg_param reg_params[6];
 	struct powerpc_algorithm powerpc_info;
-	SSD_CONFIG *ssd = &spc564b_info->ssd;
+	SSD_CONFIG *ssd = &spc56x_info->ssd;
 
 	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
@@ -367,20 +367,20 @@ flash_getlock_error:
 }
 
 
-static int spc564b_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
+static int spc56x_erase(struct flash_bank *bank, unsigned int first, unsigned int last)
 {
 
 	unsigned int i;
 	int err;
 	struct target *target = bank->target;
-	struct spc564b_flash_bank *spc564b_info = bank->driver_priv;
+	struct spc56x_flash_bank *spc56x_info = bank->driver_priv;
 	struct working_area *ssd_config;
 	struct working_area *erase_algorithm;
 
 	struct reg_param reg_params[8];
 	struct powerpc_algorithm powerpc_info;
 
-	SSD_CONFIG *ssd = &spc564b_info->ssd;
+	SSD_CONFIG *ssd = &spc56x_info->ssd;
 
 	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
@@ -396,12 +396,12 @@ static int spc564b_erase(struct flash_bank *bank, unsigned int first, unsigned i
 	if (bank->base == 0x0)
 	{
 		for (i = first; i <= last; i++) {
-			if (i < spc564b_info->low_max_index) {
+			if (i < spc56x_info->low_max_index) {
 				low_mask |= (1 << i);
-			} else if (i < spc564b_info->mid_max_index) {
-				mid_mask |= (1 << (i - spc564b_info->low_max_index));
-			} else if (i < spc564b_info->high_max_index) {
-				high_mask |= (1 << (i - spc564b_info->mid_max_index));
+			} else if (i < spc56x_info->mid_max_index) {
+				mid_mask |= (1 << (i - spc56x_info->low_max_index));
+			} else if (i < spc56x_info->high_max_index) {
+				high_mask |= (1 << (i - spc56x_info->mid_max_index));
 			}
 		}
 	}
@@ -409,25 +409,25 @@ static int spc564b_erase(struct flash_bank *bank, unsigned int first, unsigned i
 	{
 /*
 		for (i = first; i <= last; i++) {
-			if (i < spc564b_info->high_max_index) {
+			if (i < spc56x_info->high_max_index) {
 				high_mask |= (1 << (i + 8));
 			}
 		}
 */
 		for (i = first; i <= last; i++) {
-			if (i < spc564b_info->low_max_index) {
+			if (i < spc56x_info->low_max_index) {
 				low_mask |= (1 << i);
-			} else if (i < spc564b_info->mid_max_index) {
-				mid_mask |= (1 << (i - spc564b_info->low_max_index));
-			} else if (i < spc564b_info->high_max_index) {
-				high_mask |= (1 << (i - spc564b_info->mid_max_index));
+			} else if (i < spc56x_info->mid_max_index) {
+				mid_mask |= (1 << (i - spc56x_info->low_max_index));
+			} else if (i < spc56x_info->high_max_index) {
+				high_mask |= (1 << (i - spc56x_info->mid_max_index));
 			}
 		}
 	}
 	else if (bank->base == 0x800000)
 	{
 		for (i = first; i <= last; i++) {
-			if (i < spc564b_info->low_max_index) {
+			if (i < spc56x_info->low_max_index) {
 				low_mask |= (1 << i);
 			}
 		}
@@ -438,47 +438,47 @@ static int spc564b_erase(struct flash_bank *bank, unsigned int first, unsigned i
 	uint32_t lock_state;
 
 	if (low_mask != 0) {
-		err = spc564b_getlock(bank, LOCK_LOW_PRIMARY, &lock_state);
+		err = spc56x_getlock(bank, LOCK_LOW_PRIMARY, &lock_state);
 		if (err != ERROR_OK)
 			return err;
 
-		err = spc564b_setlock(bank, LOCK_LOW_PRIMARY, (lock_state & 0xFFFF0000));
+		err = spc56x_setlock(bank, LOCK_LOW_PRIMARY, (lock_state & 0xFFFF0000));
 		if (err != ERROR_OK)
 			return err;
 
-		err = spc564b_getlock(bank, LOCK_LOW_SECONDARY, &lock_state);
+		err = spc56x_getlock(bank, LOCK_LOW_SECONDARY, &lock_state);
 		if (err != ERROR_OK)
 			return err;
 
-		err = spc564b_setlock(bank, LOCK_LOW_SECONDARY, (lock_state & 0xFFFF0000));
+		err = spc56x_setlock(bank, LOCK_LOW_SECONDARY, (lock_state & 0xFFFF0000));
 		if (err != ERROR_OK)
 			return err;
 	}
 
 	if (mid_mask != 0) {
-		err = spc564b_getlock(bank, LOCK_MID_PRIMARY,  &lock_state);
+		err = spc56x_getlock(bank, LOCK_MID_PRIMARY,  &lock_state);
 		if (err != ERROR_OK)
 			return err;
 
-		err = spc564b_setlock(bank, LOCK_MID_PRIMARY, (lock_state & 0xFFFFFFFC));
+		err = spc56x_setlock(bank, LOCK_MID_PRIMARY, (lock_state & 0xFFFFFFFC));
 		if (err != ERROR_OK)
 			return err;
 
-		err = spc564b_getlock(bank, LOCK_MID_SECONDARY,  &lock_state);
+		err = spc56x_getlock(bank, LOCK_MID_SECONDARY,  &lock_state);
 		if (err != ERROR_OK)
 			return err;
 
-		err = spc564b_setlock(bank, LOCK_MID_SECONDARY, (lock_state & 0xFFFFFFFC));
+		err = spc56x_setlock(bank, LOCK_MID_SECONDARY, (lock_state & 0xFFFFFFFC));
 		if (err != ERROR_OK)
 			return err;
 	}
 
 	if (high_mask != 0) {
-		err = spc564b_getlock(bank, LOCK_HIGH, &lock_state);
+		err = spc56x_getlock(bank, LOCK_HIGH, &lock_state);
 		if (err != ERROR_OK)
 			return err;
 
-		err = spc564b_setlock(bank, LOCK_HIGH, (lock_state & 0xFFFFF000));
+		err = spc56x_setlock(bank, LOCK_HIGH, (lock_state & 0xFFFFF000));
 		if (err != ERROR_OK)
 			return err;
 	}
@@ -579,7 +579,7 @@ static int spc564b_erase(struct flash_bank *bank, unsigned int first, unsigned i
 	return err;
 }
 
-static int spc564b_protect(struct flash_bank *bank, int set, unsigned int first, unsigned int last)
+static int spc56x_protect(struct flash_bank *bank, int set, unsigned int first, unsigned int last)
 {
 	struct target *target = bank->target;
 
@@ -592,7 +592,7 @@ static int spc564b_protect(struct flash_bank *bank, int set, unsigned int first,
 }
 
 /*offset = base address count = size */
-static int spc564b_write(struct flash_bank *bank, const uint8_t *buffer,
+static int spc56x_write(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
 	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
@@ -605,14 +605,14 @@ static int spc564b_write(struct flash_bank *bank, const uint8_t *buffer,
 
 	struct powerpc_algorithm powerpc_info;
 	struct target *target = bank->target;
-	struct spc564b_flash_bank *spc564b_info = bank->driver_priv;
+	struct spc56x_flash_bank *spc56x_info = bank->driver_priv;
 
 	static struct working_area *source;
 	struct working_area *write_algorithm;
 	struct working_area *ssd_config;
 
 	struct reg_param reg_params[8];
-	SSD_CONFIG *ssd = &spc564b_info->ssd;
+	SSD_CONFIG *ssd = &spc56x_info->ssd;
 	int err = ERROR_OK;
 
 
@@ -645,23 +645,23 @@ static int spc564b_write(struct flash_bank *bank, const uint8_t *buffer,
 		return ERROR_TARGET_NOT_HALTED;
 	}
 
-	err = spc564b_setlock(bank, LOCK_LOW_PRIMARY, 0x0);
+	err = spc56x_setlock(bank, LOCK_LOW_PRIMARY, 0x0);
 	if (err != ERROR_OK)
 		return err;
 
-	err = spc564b_setlock(bank, LOCK_LOW_SECONDARY, 0x0);
+	err = spc56x_setlock(bank, LOCK_LOW_SECONDARY, 0x0);
 	if (err != ERROR_OK)
 		return err;
 
-	err = spc564b_setlock(bank, LOCK_MID_PRIMARY, 0x0);
+	err = spc56x_setlock(bank, LOCK_MID_PRIMARY, 0x0);
 	if (err != ERROR_OK)
 		return err;
 
-	err = spc564b_setlock(bank, LOCK_MID_SECONDARY, 0x0);
+	err = spc56x_setlock(bank, LOCK_MID_SECONDARY, 0x0);
 	if (err != ERROR_OK)
 		return err;
 
-	err = spc564b_setlock(bank, LOCK_HIGH, 0x0);
+	err = spc56x_setlock(bank, LOCK_HIGH, 0x0);
 	if (err != ERROR_OK)
 		return err;
 
@@ -939,15 +939,15 @@ static void setup_sector(struct flash_bank *bank, unsigned int start, unsigned i
 	}
 }
 
-static int spc564b_probe(struct flash_bank *bank)
+static int spc56x_probe(struct flash_bank *bank)
 {
-	struct spc564b_flash_bank *spc564b_info = bank->driver_priv;
+	struct spc56x_flash_bank *spc56x_info = bank->driver_priv;
 	struct target *target = bank->target;
 	struct working_area *ssd_config;
 	struct working_area *init_algorithm;
 	struct reg_param reg_params[3];
 	struct powerpc_algorithm powerpc_info;
-	SSD_CONFIG *ssd = &spc564b_info->ssd;
+	SSD_CONFIG *ssd = &spc56x_info->ssd;
 
 
 	int i;
@@ -960,15 +960,15 @@ static int spc564b_probe(struct flash_bank *bank)
 
 	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
 
-	spc564b_info->probed = 0;
+	spc56x_info->probed = 0;
 
 	/* The user sets the size manually */
-	if (spc564b_info->user_bank_size) {
+	if (spc56x_info->user_bank_size) {
 		LOG_DEBUG("ignoring flash probed value, using configured bank size");
-		flash_size_in_kb = spc564b_info->user_bank_size / 1024;
+		flash_size_in_kb = spc56x_info->user_bank_size / 1024;
 	}
 
-	LOG_INFO("flash: %d kbytes @ 0x%08x", flash_size_in_kb, spc564b_info->user_bank_addr);
+	LOG_INFO("flash: %d kbytes @ 0x%08x", flash_size_in_kb, spc56x_info->user_bank_addr);
 
 
 	/* did we assign flash size? */
@@ -1125,7 +1125,7 @@ static int spc564b_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = spc564b_info->user_bank_addr;
+		bank->base = spc56x_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1142,9 +1142,9 @@ static int spc564b_probe(struct flash_bank *bank)
 		// High Flash Blocks
 		setup_sector(bank, 8, 8, 128 * 1024);
 
-		spc564b_info->low_max_index = 6;
-		spc564b_info->mid_max_index = 8;
-		spc564b_info->high_max_index = 16;
+		spc56x_info->low_max_index = 6;
+		spc56x_info->mid_max_index = 8;
+		spc56x_info->high_max_index = 16;
 		
 	} else if(bank->base == 0x180000)
 	{
@@ -1158,7 +1158,7 @@ static int spc564b_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = spc564b_info->user_bank_addr;
+		bank->base = spc56x_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1175,9 +1175,9 @@ static int spc564b_probe(struct flash_bank *bank)
 		// High Flash Blocks
 		setup_sector(bank, 8, 8, 128 * 1024);
 
-		spc564b_info->low_max_index = 6;
-		spc564b_info->mid_max_index = 8;
-		spc564b_info->high_max_index = 16;
+		spc56x_info->low_max_index = 6;
+		spc56x_info->mid_max_index = 8;
+		spc56x_info->high_max_index = 16;
 
 		bank->sectors[0].offset = 0x100000;
 		bank->sectors[1].offset = 0x108000;
@@ -1209,7 +1209,7 @@ static int spc564b_probe(struct flash_bank *bank)
 			bank->sectors = NULL;
 		}
 
-		bank->base = spc564b_info->user_bank_addr;
+		bank->base = spc56x_info->user_bank_addr;
 		bank->num_sectors = num_pages;
 		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
 		bank->size = 0;
@@ -1217,10 +1217,10 @@ static int spc564b_probe(struct flash_bank *bank)
 		// Low Flash Blocks
 		setup_sector(bank, 0, 4, 16 * 1024);
 
-		spc564b_info->low_max_index = 4;
-		spc564b_info->large_max_index = 0;
-		spc564b_info->high_max_index = 0;
-		spc564b_info->mid_max_index = 0;
+		spc56x_info->low_max_index = 4;
+		spc56x_info->large_max_index = 0;
+		spc56x_info->high_max_index = 0;
+		spc56x_info->mid_max_index = 0;
 	}
 
 
@@ -1233,16 +1233,16 @@ static int spc564b_probe(struct flash_bank *bank)
 
 	/* Save flash geometry (in sectors) */
 /*
-	spc564b_info->low_max_index = fast_target_buffer_get_u32(&ssd->lowBlockInfo.n16KBlockNum, false) + fast_target_buffer_get_u32(&ssd->lowBlockInfo.n32KBlockNum, false) + fast_target_buffer_get_u32(&ssd->lowBlockInfo.n64KBlockNum, false) + fast_target_buffer_get_u32(&ssd->lowBlockInfo.n128KBlockNum, false);
-	spc564b_info->large_max_index = spc564b_info->low_max_index +  fast_target_buffer_get_u32(&ssd->nLargeBlockNum, false);
-	spc564b_info->high_max_index = spc564b_info->large_max_index + fast_target_buffer_get_u32(&ssd->highBlockInfo.n16KBlockNum, false) + fast_target_buffer_get_u32(&ssd->highBlockInfo.n32KBlockNum, false) + fast_target_buffer_get_u32(&ssd->highBlockInfo.n64KBlockNum, false) + fast_target_buffer_get_u32(&ssd->highBlockInfo.n128KBlockNum, false);
-	spc564b_info->mid_max_index = spc564b_info->high_max_index + fast_target_buffer_get_u32(&ssd->midBlockInfo.n16KBlockNum, false) + fast_target_buffer_get_u32(&ssd->midBlockInfo.n32KBlockNum, false) + fast_target_buffer_get_u32(&ssd->midBlockInfo.n64KBlockNum, false) + fast_target_buffer_get_u32(&ssd->midBlockInfo.n128KBlockNum, false);
+	spc56x_info->low_max_index = fast_target_buffer_get_u32(&ssd->lowBlockInfo.n16KBlockNum, false) + fast_target_buffer_get_u32(&ssd->lowBlockInfo.n32KBlockNum, false) + fast_target_buffer_get_u32(&ssd->lowBlockInfo.n64KBlockNum, false) + fast_target_buffer_get_u32(&ssd->lowBlockInfo.n128KBlockNum, false);
+	spc56x_info->large_max_index = spc56x_info->low_max_index +  fast_target_buffer_get_u32(&ssd->nLargeBlockNum, false);
+	spc56x_info->high_max_index = spc56x_info->large_max_index + fast_target_buffer_get_u32(&ssd->highBlockInfo.n16KBlockNum, false) + fast_target_buffer_get_u32(&ssd->highBlockInfo.n32KBlockNum, false) + fast_target_buffer_get_u32(&ssd->highBlockInfo.n64KBlockNum, false) + fast_target_buffer_get_u32(&ssd->highBlockInfo.n128KBlockNum, false);
+	spc56x_info->mid_max_index = spc56x_info->high_max_index + fast_target_buffer_get_u32(&ssd->midBlockInfo.n16KBlockNum, false) + fast_target_buffer_get_u32(&ssd->midBlockInfo.n32KBlockNum, false) + fast_target_buffer_get_u32(&ssd->midBlockInfo.n64KBlockNum, false) + fast_target_buffer_get_u32(&ssd->midBlockInfo.n128KBlockNum, false);
 */
 
 
 
 	/* Done */
-	spc564b_info->probed = 1;
+	spc56x_info->probed = 1;
 
 
 flash_init_error:
@@ -1257,20 +1257,20 @@ flash_init_error:
 	return err;
 }
 
-static int spc564b_auto_probe(struct flash_bank *bank)
+static int spc56x_auto_probe(struct flash_bank *bank)
 {
-	struct spc564b_flash_bank *spc564b_info = bank->driver_priv;
+	struct spc56x_flash_bank *spc56x_info = bank->driver_priv;
 
 	LOG_DEBUG("%s:%d %s()",
 		__FILE__, __LINE__, __func__);
 
-	if (spc564b_info->probed)
+	if (spc56x_info->probed)
 		return ERROR_OK;
-	return spc564b_probe(bank);
+	return spc56x_probe(bank);
 }
 
 
-static int get_spc564b_info(struct flash_bank *bank, struct command_invocation *cmd)
+static int get_spc56x_info(struct flash_bank *bank, struct command_invocation *cmd)
 {
 	LOG_DEBUG("%s:%d %s()",
 		__FILE__, __LINE__, __func__);
@@ -1282,16 +1282,16 @@ static int get_spc564b_info(struct flash_bank *bank, struct command_invocation *
 }
 
 
-struct flash_driver spc564b_flash = {
-	.name = "spc564b",
-	.flash_bank_command = spc564b_flash_bank_command,
-	.erase = spc564b_erase,
-	.protect = spc564b_protect,
-	.write = spc564b_write,
+struct flash_driver spc56x_flash = {
+	.name = "spc56x",
+	.flash_bank_command = spc56x_flash_bank_command,
+	.erase = spc56x_erase,
+	.protect = spc56x_protect,
+	.write = spc56x_write,
 	.read = default_flash_read,
-	.probe = spc564b_probe,
-	.auto_probe = spc564b_auto_probe,
+	.probe = spc56x_probe,
+	.auto_probe = spc56x_auto_probe,
 	.erase_check = default_flash_blank_check,
-	.protect_check = spc564b_protect_check,
-	.info = get_spc564b_info,
+	.protect_check = spc56x_protect_check,
+	.info = get_spc56x_info,
 };
