@@ -466,7 +466,7 @@ static void powerpc56_decode_idcode(uint32_t idcode)
 	}
 }
 
-static uint32_t powerpc56_return_part_number(uint32_t idcode)
+uint32_t powerpc56_return_part_number(uint32_t idcode)
 {
 	uint32_t manufacturer;
 

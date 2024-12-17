@@ -34,6 +34,8 @@
 #include "spc56x.h"
 #include "../../../contrib/loaders/flash/powerpc/spc56x.inc"
 
+extern uint32_t powerpc56_return_part_number(uint32_t idcode);
+
 #define C_REG_BASE                 0xC3F88000
 #define C_ARRAY_BASE               0x00000000
 #define SHADOW_ROW_BASE            0x00200000
@@ -956,6 +958,10 @@ static int spc56x_probe(struct flash_bank *bank)
 
 	int num_pages;
 
+	uint32_t idcode;
+	uint32_t part_number;
+
+
 	num_pages = 0;
 
 	LOG_DEBUG("%s:%d %s()", __FILE__, __LINE__, __func__);
@@ -1115,36 +1121,101 @@ static int spc56x_probe(struct flash_bank *bank)
 	*/
 	if(bank->base == 0x0)
 	{
-		num_pages = 16;
+		idcode = target->tap->idcode;
 
-		/* check that calculation result makes sense */
-		assert(num_pages > 0);
+		part_number = powerpc56_return_part_number(idcode);
 
-		if (bank->sectors) {
-			free(bank->sectors);
-			bank->sectors = NULL;
+		if (part_number == 0x244)
+		{
+			num_pages = 6;
+
+			/* check that calculation result makes sense */
+			assert(num_pages > 0);
+
+			if (bank->sectors) {
+				free(bank->sectors);
+				bank->sectors = NULL;
+			}
+
+			bank->base = spc56x_info->user_bank_addr;
+			bank->num_sectors = num_pages;
+			bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
+			bank->size = 0;
+
+			// Low Flash Blocks
+			setup_sector(bank, 0, 1, 32 * 1024);
+			setup_sector(bank, 1, 2, 16 * 1024);
+			setup_sector(bank, 3, 2, 32 * 1024);
+			setup_sector(bank, 5, 1, 128 * 1024);
+
+			spc56x_info->low_max_index = 6;
+			spc56x_info->mid_max_index = 0;
+			spc56x_info->high_max_index = 0;
+
 		}
+		else if ((part_number == 0x241) ||(part_number == 0x243))
+		{
+			num_pages = 8;
 
-		bank->base = spc56x_info->user_bank_addr;
-		bank->num_sectors = num_pages;
-		bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
-		bank->size = 0;
+			/* check that calculation result makes sense */
+			assert(num_pages > 0);
 
-		// Low Flash Blocks
-		setup_sector(bank, 0, 1, 32 * 1024);
-		setup_sector(bank, 1, 2, 16 * 1024);
-		setup_sector(bank, 3, 2, 32 * 1024);
-		setup_sector(bank, 5, 1, 128 * 1024);
+			if (bank->sectors) {
+				free(bank->sectors);
+				bank->sectors = NULL;
+			}
 
-		// Mid Flash Blocks
-		setup_sector(bank, 6, 2, 128 * 1024);
+			bank->base = spc56x_info->user_bank_addr;
+			bank->num_sectors = num_pages;
+			bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
+			bank->size = 0;
 
-		// High Flash Blocks
-		setup_sector(bank, 8, 8, 128 * 1024);
+			// Low Flash Blocks
+			setup_sector(bank, 0, 1, 32 * 1024);
+			setup_sector(bank, 1, 2, 16 * 1024);
+			setup_sector(bank, 3, 2, 32 * 1024);
+			setup_sector(bank, 5, 1, 128 * 1024);
 
-		spc56x_info->low_max_index = 6;
-		spc56x_info->mid_max_index = 8;
-		spc56x_info->high_max_index = 16;
+			// Mid Flash Blocks
+			setup_sector(bank, 6, 2, 128 * 1024);
+
+			spc56x_info->low_max_index = 6;
+			spc56x_info->mid_max_index = 8;
+			spc56x_info->high_max_index = 0;
+		}
+		else if (part_number == 0x249)
+		{
+			num_pages = 16;
+
+			/* check that calculation result makes sense */
+			assert(num_pages > 0);
+
+			if (bank->sectors) {
+				free(bank->sectors);
+				bank->sectors = NULL;
+			}
+
+			bank->base = spc56x_info->user_bank_addr;
+			bank->num_sectors = num_pages;
+			bank->sectors = malloc(sizeof(struct flash_sector) * num_pages);
+			bank->size = 0;
+
+			// Low Flash Blocks
+			setup_sector(bank, 0, 1, 32 * 1024);
+			setup_sector(bank, 1, 2, 16 * 1024);
+			setup_sector(bank, 3, 2, 32 * 1024);
+			setup_sector(bank, 5, 1, 128 * 1024);
+
+			// Mid Flash Blocks
+			setup_sector(bank, 6, 2, 128 * 1024);
+
+			// High Flash Blocks
+			setup_sector(bank, 8, 8, 128 * 1024);
+
+			spc56x_info->low_max_index = 6;
+			spc56x_info->mid_max_index = 8;
+			spc56x_info->high_max_index = 16;
+		}
 		
 	} else if(bank->base == 0x180000)
 	{
