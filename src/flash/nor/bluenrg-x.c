@@ -25,7 +25,7 @@
 #define JTAG_IDCODE_REG(bluenrgx_info)      (bluenrgx_info->flash_ptr->jtag_idcode_reg)
 #define FLASH_PAGE_SIZE(bluenrgx_info)      (bluenrgx_info->flash_ptr->flash_page_size)
 
-#define FLASH_SIZE_REG_MASK (0xFFFF)
+#define FLASH_SIZE_REG_MASK (0x1FFFF)
 
 struct flash_ctrl_priv_data {
 	uint32_t die_id_reg;
