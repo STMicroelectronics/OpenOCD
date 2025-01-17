@@ -31,6 +31,7 @@
 #endif
 
 #include <helper/align.h>
+#include <helper/binarybuffer.h>
 #include <helper/nvp.h>
 #include <helper/time_support.h>
 #include <jtag/jtag.h>
@@ -191,6 +192,9 @@ static const struct jim_nvp nvp_target_event[] = {
 
 	{ .value = TARGET_EVENT_GDB_FLASH_ERASE_START, .name = "gdb-flash-erase-start" },
 	{ .value = TARGET_EVENT_GDB_FLASH_ERASE_END,   .name = "gdb-flash-erase-end" },
+
+	{ .value = TARGET_EVENT_READ_BUFFER,  .name = "read-buffer" },
+	{ .value = TARGET_EVENT_WRITE_BUFFER, .name = "write-buffer" },
 
 	{ .value = TARGET_EVENT_TRACE_CONFIG, .name = "trace-config" },
 
@@ -2335,6 +2339,74 @@ int target_profiling_default(struct target *target, uint32_t *samples,
 	return retval;
 }
 
+/*
+ * Try to write through event write-buffer. It returns:
+ * ERROR_NOT_IMPLEMENTED => no override, use standard method
+ * ERROR_OK              => overriding successful, return it
+ * ERROR_xxx             => error during overriding, propagate it
+ */
+static int target_write_buffer_override(struct target *target,
+	target_addr_t address, uint32_t size, const uint8_t *buffer)
+{
+	struct target_event_action *teap = target->event_action;
+
+	while (teap) {
+		if (teap->event == TARGET_EVENT_WRITE_BUFFER)
+			break;
+		teap = teap->next;
+	}
+
+	if (!teap)
+		return ERROR_NOT_IMPLEMENTED;
+
+	char *hex = malloc(2 * size + 1);
+	if (!hex) {
+		LOG_ERROR("Out of memory");
+		return ERROR_FAIL;
+	}
+
+	hexify(hex, buffer, size, 2 * size + 1);
+
+	struct command_context *cmd_ctx = current_command_context(teap->interp);
+	char *query_cmd = alloc_printf("%s " TARGET_ADDR_FMT " 0x%" PRIx32 " %s",
+		Jim_GetString(teap->body, NULL), address, size, hex);
+	free(hex);
+	if (!query_cmd) {
+		LOG_ERROR("Out of memory");
+		return ERROR_FAIL;
+	}
+
+	/* Override current target */
+	struct target *saved_target_override = cmd_ctx->current_target_override;
+	cmd_ctx->current_target_override = target;
+
+	int retval = Jim_Eval(teap->interp, query_cmd);
+
+	cmd_ctx->current_target_override = saved_target_override;
+
+	free(query_cmd);
+
+	if (retval == JIM_RETURN)
+		retval = teap->interp->returnCode;
+
+	if (retval != JIM_OK) {
+		Jim_MakeErrorMessage(teap->interp);
+		LOG_TARGET_ERROR(target, "Execution of event %s failed:\n%s",
+			target_event_name(TARGET_EVENT_WRITE_BUFFER),
+			Jim_GetString(Jim_GetResult(teap->interp), NULL));
+		/* clean both error code and stacktrace before return */
+		Jim_Eval(teap->interp, "error \"\" \"\"");
+
+		return ERROR_FAIL;
+	}
+
+	const char *result = Jim_GetString(Jim_GetResult(teap->interp), NULL);
+	if (strcmp(result, "-1") == 0)
+		return ERROR_NOT_IMPLEMENTED;
+
+	return ERROR_OK;
+}
+
 /* Single aligned words are guaranteed to use 16 or 32 bit access
  * mode respectively, otherwise data is handled as quickly as
  * possible
@@ -2359,6 +2431,10 @@ int target_write_buffer(struct target *target, target_addr_t address, uint32_t s
 				  size);
 		return ERROR_FAIL;
 	}
+
+	int retval = target_write_buffer_override(target, address, size, buffer);
+	if (retval != ERROR_NOT_IMPLEMENTED)
+		return retval;
 
 	return target->type->write_buffer(target, address, size, buffer);
 }
@@ -2400,6 +2476,72 @@ static int target_write_buffer_default(struct target *target,
 	return ERROR_OK;
 }
 
+/*
+ * Try to read through event read-buffer. It returns:
+ * ERROR_NOT_IMPLEMENTED => no override, use standard method
+ * ERROR_OK              => overriding successful, return it
+ * ERROR_xxx             => error during overriding, propagate it
+ */
+static int target_read_buffer_override(struct target *target,
+	target_addr_t address, uint32_t size, uint8_t *buffer)
+{
+	struct target_event_action *teap = target->event_action;
+
+	while (teap) {
+		if (teap->event == TARGET_EVENT_READ_BUFFER)
+			break;
+		teap = teap->next;
+	}
+
+	if (!teap)
+		return ERROR_NOT_IMPLEMENTED;
+
+	struct command_context *cmd_ctx = current_command_context(teap->interp);
+	char *query_cmd = alloc_printf("%s " TARGET_ADDR_FMT " 0x%" PRIx32,
+		Jim_GetString(teap->body, NULL), address, size);
+	if (!query_cmd) {
+		LOG_ERROR("Out of memory");
+		return ERROR_FAIL;
+	}
+
+	/* Override current target */
+	struct target *saved_target_override = cmd_ctx->current_target_override;
+	cmd_ctx->current_target_override = target;
+
+	int retval = Jim_Eval(teap->interp, query_cmd);
+
+	cmd_ctx->current_target_override = saved_target_override;
+
+	free(query_cmd);
+
+	if (retval == JIM_RETURN)
+		retval = teap->interp->returnCode;
+
+	if (retval != JIM_OK) {
+		Jim_MakeErrorMessage(teap->interp);
+		LOG_TARGET_ERROR(target, "Execution of event %s failed:\n%s",
+			target_event_name(TARGET_EVENT_READ_BUFFER),
+			Jim_GetString(Jim_GetResult(teap->interp), NULL));
+		/* clean both error code and stacktrace before return */
+		Jim_Eval(teap->interp, "error \"\" \"\"");
+
+		return ERROR_FAIL;
+	}
+
+	int len;
+	const char *result = Jim_GetString(Jim_GetResult(teap->interp), &len);
+	if (strcmp(result, "-1") == 0)
+		return ERROR_NOT_IMPLEMENTED;
+
+	if ((unsigned int)len != 2 * size)
+		return ERROR_FAIL;
+
+	/* TODO: there is no check for incorrect hex content */
+	unhexify(buffer, result, size);
+
+	return ERROR_OK;
+}
+
 /* Single aligned words are guaranteed to use 16 or 32 bit access
  * mode respectively, otherwise data is handled as quickly as
  * possible
@@ -2424,6 +2566,10 @@ int target_read_buffer(struct target *target, target_addr_t address, uint32_t si
 				  size);
 		return ERROR_FAIL;
 	}
+
+	int retval = target_read_buffer_override(target, address, size, buffer);
+	if (retval != ERROR_NOT_IMPLEMENTED)
+		return retval;
 
 	return target->type->read_buffer(target, address, size, buffer);
 }
@@ -4393,6 +4539,76 @@ COMMAND_HANDLER(handle_profile_command)
 	return retval;
 }
 
+COMMAND_HANDLER(handle_target_read_buffer)
+{
+	if (CMD_ARGC != 2)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	target_addr_t addr;
+	COMMAND_PARSE_ADDRESS(CMD_ARGV[0], addr);
+
+	unsigned int count;
+	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[1], count);
+
+	struct target *target = get_current_target(CMD_CTX);
+
+	uint8_t *buf = malloc(count);
+	char *hex = malloc(2 * count + 1);
+	if (!buf || !hex) {
+		LOG_ERROR("Out of memory");
+		free(hex);
+		free(buf);
+		return ERROR_FAIL;
+	}
+
+	int retval = target_read_buffer(target, addr, count, buf);
+	if (retval != ERROR_OK) {
+		free(hex);
+		free(buf);
+		return retval;
+	}
+
+	hexify(hex, buf, count, 2 * count + 1);
+	command_print(CMD, "%s", hex);
+
+	free(hex);
+	free(buf);
+
+	return ERROR_OK;
+}
+
+COMMAND_HANDLER(handle_target_write_buffer)
+{
+	if (CMD_ARGC != 3)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	target_addr_t addr;
+	COMMAND_PARSE_ADDRESS(CMD_ARGV[0], addr);
+
+	unsigned int count;
+	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[1], count);
+
+	if (strlen(CMD_ARGV[2]) != 2 * count)
+		return ERROR_COMMAND_ARGUMENT_INVALID;
+
+	struct target *target = get_current_target(CMD_CTX);
+
+	uint8_t *buf = malloc(count);
+	if (!buf) {
+		LOG_ERROR("Out of memory");
+		return ERROR_FAIL;
+	}
+
+	/* TODO: there is no check for incorrect hex content */
+	unhexify(buf, CMD_ARGV[2], count);
+
+	int retval = target_write_buffer(target, addr, count, buf);
+
+	free(buf);
+
+	return retval;
+}
+
 COMMAND_HANDLER(handle_target_read_memory)
 {
 	/*
@@ -5604,6 +5820,20 @@ static const struct command_registration target_instance_command_handlers[] = {
 		.usage = "address width data ['phys']",
 	},
 	{
+		.name = "read_buffer",
+		.mode = COMMAND_EXEC,
+		.handler = handle_target_read_buffer,
+		.help = "Read 8 bit values from target memory",
+		.usage = "address count",
+	},
+	{
+		.name = "write_buffer",
+		.mode = COMMAND_EXEC,
+		.handler = handle_target_write_buffer,
+		.help = "Write 8 bit values to target memory",
+		.usage = "address count data",
+	},
+	{
 		.name = "eventlist",
 		.handler = handle_target_event_list,
 		.mode = COMMAND_EXEC,
@@ -6737,6 +6967,20 @@ static const struct command_registration target_exec_command_handlers[] = {
 		.jim_handler = target_jim_write_memory,
 		.help = "Write Tcl list of 8/16/32/64 bit numbers to target memory",
 		.usage = "address width data ['phys']",
+	},
+	{
+		.name = "read_buffer",
+		.mode = COMMAND_EXEC,
+		.handler = handle_target_read_buffer,
+		.help = "Read 8 bit values from target memory",
+		.usage = "address count",
+	},
+	{
+		.name = "write_buffer",
+		.mode = COMMAND_EXEC,
+		.handler = handle_target_write_buffer,
+		.help = "Write 8 bit values to target memory",
+		.usage = "address count data",
 	},
 	{
 		.name = "debug_reason",

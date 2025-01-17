@@ -5290,6 +5290,19 @@ read_memory 0x20000000 32 2
 @end example
 @end deffn
 
+@deffn {Command} {$target_name write_buffer} address count data
+Helper command for write-buffer event.
+Writes @var{count} bytes at target @var{address}.
+The values in @var{data} are stored as a single hexadecimal string without separations nor 0x prefix.
+The length of @var{data} should match @var{count}.
+@end deffn
+
+@deffn {Command} {$target_name read_buffer} address count
+Helper command for read-buffer event.
+Reads @var{count} bytes at target @var{address}.
+Returns the bytes as a single hexadecimal string without separations nor 0x prefix.
+@end deffn
+
 @deffn {Command} {$target_name cget} queryparm
 Each configuration parameter accepted by
 @command{$target_name configure}
@@ -5541,6 +5554,58 @@ when reset disables PLLs needed to use a fast clock.
 @* The target made a semihosting call with user-defined operation number 0x106
 @item @b{semihosting-user-cmd-0x107}
 @* The target made a semihosting call with user-defined operation number 0x107
+
+@item @b{write-buffer}
+Issued by any memory write from GDB.
+It is suitable to redirect GDB memory writes to other interfaces, e.g.:
+@itemize @minus
+@item emulated targets where it's too slow accessing memory through the CPU and
+specific workaround could be provided by the emulator;
+@item for targets that should be halted to access its memory (e.g. ARM Cortex-A
+and Cortex-R), allow writing HW registers while the target is running.
+@end itemize
+
+The event handler should be the name of a Tcl proc that accepts three
+parameters for @var{address}, @var{count} and @var{data}, where:
+@itemize @minus
+@item @var{address} is the target's address where to write to;
+@item @var{count} is the number of bytes to write;
+@item @var{data} is a single string of hexadecimal bytes without separators
+nor 0x prefix.
+@end itemize
+The Tcl proc should return:
+@itemize @minus
+@item nothing when it succeeds performing the write;
+@item an error when it fails during the write;
+@item the string "-1" when the it cannot process the request and requires the
+fallback to the standard write buffer method of the target to proceed.
+@end itemize
+
+@item @b{read-buffer}
+Issued by any memory read from GDB.
+It is suitable to redirect GDB memory reads to other interfaces, e.g.:
+@itemize @minus
+@item emulated targets where it's too slow accessing memory through the CPU and
+specific workaround could be provided by the emulator;
+@item for targets that should be halted to access its memory (e.g. ARM Cortex-A
+and Cortex-R), allowing reading or sampling HW registers while the target is running.
+@end itemize
+
+The event handler should be the name of a Tcl proc that accepts two
+parameters for @var{address} and @var{count}, where:
+@itemize @minus
+@item @var{address} is the target's address where to read from;
+@item @var{count} is the number of bytes to read.
+@end itemize
+The Tcl proc should return:
+@itemize @minus
+@item a single string of hexadecimal bytes without separators nor 0x prefix, when
+the read succeeds;
+@item an error when it fails during the read;
+@item the string "-1" when the it cannot process the request and requires the
+fallback to the standard read buffer method of the target to proceed.
+@end itemize
+
 @end itemize
 
 @quotation Note

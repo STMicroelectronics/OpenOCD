@@ -285,6 +285,10 @@ enum target_event {
 
 	TARGET_EVENT_TRACE_CONFIG,
 
+	/* abuse events to override GDB read/write buffer */
+	TARGET_EVENT_READ_BUFFER,
+	TARGET_EVENT_WRITE_BUFFER,
+
 	TARGET_EVENT_SEMIHOSTING_USER_CMD_0X100 = 0x100, /* semihosting allows user cmds from 0x100 to 0x1ff */
 	TARGET_EVENT_SEMIHOSTING_USER_CMD_0X101 = 0x101,
 	TARGET_EVENT_SEMIHOSTING_USER_CMD_0X102 = 0x102,
