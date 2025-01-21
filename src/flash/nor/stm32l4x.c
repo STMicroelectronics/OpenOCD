@@ -385,6 +385,10 @@ static const struct stm32l4_rev stm32wba5x_revs[] = {
 	{ 0x1000, "A" },
 };
 
+static const struct stm32l4_rev stm32wba6x_revs[] = {
+	{ 0x1000, "A" }, { 0x1001, "Z" },
+};
+
 static const struct stm32l4_rev stm32wb1xx_revs[] = {
 	{ 0x1000, "A" }, { 0x2000, "B" },
 };
@@ -789,6 +793,18 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .fsize_addr            = 0x1FFF6EA0,
 	  .otp_base              = 0x1FFF6800,
 	  .otp_size              = 1024,
+	},
+	{
+	  .id                    = DEVID_STM32WBA6X,
+	  .revs                  = stm32wba6x_revs,
+	  .num_revs              = ARRAY_SIZE(stm32wba6x_revs),
+	  .device_str            = "STM32WBA6x",
+	  .max_flash_size_kb     = 2048,
+	  .flags                 = F_HAS_DUAL_BANK | F_QUAD_WORD_PROG | F_HAS_TZ | F_HAS_L5_FLASH_REGS,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x0FFA07A0,
+	  .otp_base              = 0x0BFA0000,
+	  .otp_size              = 512,
 	},
 };
 
@@ -1390,8 +1406,10 @@ static int stm32l4_erase(struct flash_bank *bank, unsigned int first,
 			uint8_t snb;
 			snb = i - stm32l4_info->bank1_sectors;
 			erase_flags |= snb << FLASH_PAGE_SHIFT | stm32l4_info->cr_bker_mask;
-		} else
+		} else {
 			erase_flags |= i << FLASH_PAGE_SHIFT;
+		}
+
 		retval = stm32l4_write_flash_reg_by_index(bank, STM32_FLASH_CR_INDEX, erase_flags);
 		if (retval != ERROR_OK)
 			break;
@@ -2259,6 +2277,20 @@ static int stm32l4_probe(struct flash_bank *bank)
 		page_size_kb = 8;
 		num_pages = flash_size_kb / page_size_kb;
 		stm32l4_info->bank1_sectors = num_pages;
+
+		/**
+		 * by default use the non-secure registers,
+		 * switch secure registers if TZ is enabled and RDP is LEVEL_0
+		 */
+		if (stm32l4_info->tzen && stm32l4_info->rdp == RDP_LEVEL_0)
+			stm32l4_info->flash_regs = stm32l5_s_flash_regs;
+		break;
+	case DEVID_STM32WBA6X:
+		/* dual bank flash */
+		page_size_kb = 8;
+		num_pages = flash_size_kb / page_size_kb;
+		stm32l4_info->dual_bank_mode = true;
+		stm32l4_info->bank1_sectors = num_pages / 2;
 
 		/**
 		 * by default use the non-secure registers,
