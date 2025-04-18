@@ -325,10 +325,10 @@ static int bluenrgx_write_with_loader(struct flash_bank *bank, const uint8_t *bu
 	init_reg_param(&reg_params[4], "sp", 32, PARAM_OUT);
 	/* Put the 4th parameter at the location in the stack frame of target write() function.
 	 * See contrib/loaders/flash/bluenrg-x/bluenrg-x_write.lst
-	 * 34 ldr     r6, [sp, #80]
+	 * 34 ldr     r6, [sp, #88]
 	 *                     ^^^ offset
 	 */
-	init_mem_param(&mem_params[0], write_algorithm_stack->address + 80, 32, PARAM_OUT);
+	init_mem_param(&mem_params[0], write_algorithm_stack->address + 88, 32, PARAM_OUT);
 	/* Stack for target write algorithm - target write() function has
 	 * __attribute__((naked)) so it does not setup the new stack frame.
 	 * Therefore the stack frame uses the area from SP upwards!
@@ -458,6 +458,7 @@ static int bluenrgx_write(struct flash_bank *bank, const uint8_t *buffer,
 			  uint32_t offset, uint32_t count)
 {
 	struct bluenrgx_flash_bank *bluenrgx_info = bank->driver_priv;
+	int retval = ERROR_OK;
 
 	/* check preconditions */
 	if (!bluenrgx_info->probed)
@@ -478,14 +479,13 @@ static int bluenrgx_write(struct flash_bank *bank, const uint8_t *buffer,
 	assert(offset % FLASH_WORD_LEN == 0);
 	assert(count % FLASH_WORD_LEN == 0);
 
-	bool use_loader = false;
-
-	if (use_loader)
-		return bluenrgx_write_with_loader(bank, buffer, offset, count);
-
-
-	return bluenrgx_write_without_loader(bank, buffer, offset, count);
-
+	retval = bluenrgx_write_with_loader(bank, buffer, offset, count);
+	/* if resources are not available write without a loader */
+	if (retval == ERROR_TARGET_RESOURCE_NOT_AVAILABLE) {
+		LOG_WARNING("falling back to programming without a flash loader (slower)");
+		retval = bluenrgx_write_without_loader(bank, buffer, offset, count);
+	}
+	return retval;
 }
 
 static int bluenrgx_probe(struct flash_bank *bank)
