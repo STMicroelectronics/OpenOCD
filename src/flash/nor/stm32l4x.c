@@ -293,6 +293,10 @@ static const struct stm32l4_rev stm32u37_u38xx_revs[] = {
 	{ 0x1000, "A" },
 };
 
+static const struct stm32l4_rev stm32u3b_u3cxx_revs[] = {
+	{ 0x1000, "A" }, { 0x1001, "Z" },
+};
+
 static const struct stm32l4_rev stm32l43_l44xx_revs[] = {
 	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x2001, "Y" },
 };
@@ -674,6 +678,18 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .device_str            = "STM32U37/U38xx",
 	  .max_flash_size_kb     = 1024,
 	  .flags                 = F_HAS_DUAL_BANK | F_HAS_TZ | F_HAS_L5_FLASH_REGS,
+	  .flash_regs_base       = 0x40022000,
+	  .fsize_addr            = 0x0BFA07A0,
+	  .otp_base              = 0x0BFA0000,
+	  .otp_size              = 512,
+	},
+	{
+	  .id                    = DEVID_STM32U3B_U3CXX,
+	  .revs                  = stm32u3b_u3cxx_revs,
+	  .num_revs              = ARRAY_SIZE(stm32u3b_u3cxx_revs),
+	  .device_str            = "STM32U3B/U3Cxx",
+	  .max_flash_size_kb     = 2048,
+	  .flags                 = F_HAS_DUAL_BANK | F_HAS_TZ | F_HAS_L5_FLASH_REGS | F_WRP_HAS_LOCK,
 	  .flash_regs_base       = 0x40022000,
 	  .fsize_addr            = 0x0BFA07A0,
 	  .otp_base              = 0x0BFA0000,
@@ -2261,6 +2277,7 @@ static int stm32l4_probe(struct flash_bank *bank)
 		}
 		break;
 	case DEVID_STM32U37_U38XX:
+	case DEVID_STM32U3B_U3CXX:
 		page_size_kb = 4;
 		num_pages = flash_size_kb / page_size_kb;
 		stm32l4_info->bank1_sectors = num_pages;
