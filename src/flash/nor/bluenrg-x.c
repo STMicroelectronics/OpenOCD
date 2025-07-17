@@ -273,7 +273,6 @@ static int bluenrgx_write_with_loader(struct flash_bank *bank, const uint8_t *bu
 {
 	struct bluenrgx_flash_bank *bluenrgx_info = bank->driver_priv;
 	struct target *target = bank->target;
-	uint32_t buffer_size = 16384 + 8;
 	struct working_area *write_algorithm;
 	struct working_area *write_algorithm_stack;
 	struct working_area *source;
@@ -301,6 +300,20 @@ static int bluenrgx_write_with_loader(struct flash_bank *bank, const uint8_t *bu
 					 bluenrgx_flash_write_code);
 	if (retval != ERROR_OK)
 		return retval;
+
+	/* write_algorithm_stack area size 128 */
+	uint32_t buffer_size = target_get_working_area_avail(target) - 128;
+	/* buffer size should be multiple of FLASH_DATA_WIDTH*/
+	buffer_size &= ~(FLASH_DATA_WIDTH - 1);
+
+	if (buffer_size < 256) {
+		LOG_WARNING("large enough working area not available, can't do block memory writes");
+		target_free_working_area(target, write_algorithm);
+		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
+	} else if (buffer_size > 16384) {
+		/* probably won't benefit from more than 16k ... */
+		buffer_size = 16384;
+	}
 
 	/* memory buffer */
 	if (target_alloc_working_area(target, buffer_size, &source)) {
