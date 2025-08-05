@@ -21,6 +21,7 @@
 #include "jtag/interface.h"
 #include "breakpoints.h"
 #include "cortex_m.h"
+#include "armv7m_cache.h"
 #include "target_request.h"
 #include "target_type.h"
 #include "arm_adi_v5.h"
@@ -830,6 +831,14 @@ static int cortex_m_debug_entry(struct target *target)
 			return retval;
 	}
 
+	// read caches state
+	uint32_t ccr = 0;
+	if (armv7m->armv7m_cache.info_valid) {
+		retval = mem_ap_read_u32(armv7m->debug_ap, CCR, &ccr);
+		if (retval != ERROR_OK)
+			return retval;
+	}
+
 	/* Load all registers to arm.core_cache */
 	if (!cortex_m->slow_register_read) {
 		retval = cortex_m_fast_read_all_regs(target);
@@ -882,6 +891,15 @@ static int cortex_m_debug_entry(struct target *target)
 		buf_get_u32(arm->pc->value, 0, 32),
 		secure_state ? "Secure" : "Non-Secure",
 		target_state_name(target));
+
+	if (armv7m->armv7m_cache.info_valid) {
+		armv7m->armv7m_cache.d_u_cache_enabled = ccr & CCR_DC_MASK;
+		armv7m->armv7m_cache.i_cache_enabled = ccr & CCR_IC_MASK;
+
+		LOG_TARGET_DEBUG(target, "D-Cache %s, I-Cache %s",
+			armv7m->armv7m_cache.d_u_cache_enabled ? "enabled" : "disabled",
+			armv7m->armv7m_cache.i_cache_enabled ? "enabled" : "disabled");
+	}
 
 	if (armv7m->post_debug_entry) {
 		retval = armv7m->post_debug_entry(target);
@@ -1867,12 +1885,25 @@ int cortex_m_set_breakpoint(struct target *target, struct breakpoint *breakpoint
 				breakpoint->orig_instr);
 		if (retval != ERROR_OK)
 			return retval;
+		// make sure data cache is cleaned & invalidated down to PoC
+		retval = armv7m_d_cache_flush(target, breakpoint->address, breakpoint->length);
+		if (retval != ERROR_OK)
+			return retval;
+
 		retval = target_write_memory(target,
 				breakpoint->address & 0xFFFFFFFE,
 				breakpoint->length, 1,
 				code);
 		if (retval != ERROR_OK)
 			return retval;
+		// update i-cache at breakpoint location
+		retval = armv7m_d_cache_flush(target, breakpoint->address, breakpoint->length);
+		if (retval != ERROR_OK)
+			return retval;
+		retval = armv7m_i_cache_inval(target, breakpoint->address, breakpoint->length);
+		if (retval != ERROR_OK)
+			return retval;
+
 		breakpoint->is_set = true;
 	}
 
@@ -1915,10 +1946,23 @@ int cortex_m_unset_breakpoint(struct target *target, struct breakpoint *breakpoi
 		target_write_u32(target, comparator_list[fp_num].fpcr_address,
 			comparator_list[fp_num].fpcr_value);
 	} else {
+		// make sure data cache is cleaned & invalidated down to PoC
+		retval = armv7m_d_cache_flush(target, breakpoint->address, breakpoint->length);
+		if (retval != ERROR_OK)
+			return retval;
+
 		/* restore original instruction (kept in target endianness) */
 		retval = target_write_memory(target, breakpoint->address & 0xFFFFFFFE,
 					breakpoint->length, 1,
 					breakpoint->orig_instr);
+		if (retval != ERROR_OK)
+			return retval;
+
+		// update i-cache at breakpoint location
+		retval = armv7m_d_cache_flush(target, breakpoint->address, breakpoint->length);
+		if (retval != ERROR_OK)
+			return retval;
+		retval = armv7m_i_cache_inval(target, breakpoint->address, breakpoint->length);
 		if (retval != ERROR_OK)
 			return retval;
 	}
@@ -2723,6 +2767,12 @@ int cortex_m_examine(struct target *target)
 		LOG_TARGET_INFO(target, "target has %d breakpoints, %d watchpoints",
 			cortex_m->fp_num_code,
 			cortex_m->dwt_num_comp);
+
+		retval = armv7m_identify_cache(target);
+		if (retval != ERROR_OK) {
+			LOG_ERROR("Cannot detect cache");
+			return retval;
+		}
 	}
 
 	return ERROR_OK;
@@ -3052,6 +3102,16 @@ COMMAND_HANDLER(handle_cortex_m_reset_config_command)
 	return ERROR_OK;
 }
 
+COMMAND_HANDLER(handle_cortex_m_cache_info_command)
+{
+	if (CMD_ARGC)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	struct target *target = get_current_target(CMD_CTX);
+
+	return armv7m_handle_cache_info_command(CMD, target);
+}
+
 static const struct command_registration cortex_m_exec_command_handlers[] = {
 	{
 		.name = "maskisr",
@@ -3073,6 +3133,13 @@ static const struct command_registration cortex_m_exec_command_handlers[] = {
 		.mode = COMMAND_ANY,
 		.help = "configure software reset handling",
 		.usage = "['sysresetreq'|'vectreset']",
+	},
+	{
+		.name = "cache_info",
+		.handler = handle_cortex_m_cache_info_command,
+		.mode = COMMAND_EXEC,
+		.help = "display information about target caches",
+		.usage = "",
 	},
 	{
 		.chain = smp_command_handlers,
