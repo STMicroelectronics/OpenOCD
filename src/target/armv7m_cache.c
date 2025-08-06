@@ -189,11 +189,81 @@ int armv7m_identify_cache(struct target *target)
 	return ERROR_OK;
 }
 
+extern struct command_context *global_cmd_ctx;
+
+static int armv7m_cache_helper(struct target *target, const char *helper,
+	uint32_t address, unsigned int length)
+{
+	struct command_context *cmd_ctx = global_cmd_ctx;
+
+	char *proc = alloc_printf("%s::%s", target_name(target), helper);
+	if (!proc) {
+		LOG_ERROR("Out of memory");
+		return ERROR_FAIL;
+	}
+
+	Jim_Obj *jim_name = Jim_NewStringObj(cmd_ctx->interp, proc, -1);
+	Jim_IncrRefCount(jim_name);
+	Jim_Cmd *jimcmd = Jim_GetCommand(cmd_ctx->interp, jim_name, JIM_NONE);
+	Jim_DecrRefCount(cmd_ctx->interp, jim_name);
+	if (!jimcmd) {
+		free(proc);
+		return ERROR_NOT_IMPLEMENTED;
+	}
+
+	char *query_cmd = alloc_printf("%s 0x%" PRIx32 " 0x%x",
+		proc, address, length);
+	free(proc);
+	if (!query_cmd) {
+		LOG_ERROR("Out of memory");
+		return ERROR_FAIL;
+	}
+
+	/* Override current target */
+	struct target *saved_target_override = cmd_ctx->current_target_override;
+	cmd_ctx->current_target_override = target;
+
+	int retval = Jim_Eval(cmd_ctx->interp, query_cmd);
+
+	cmd_ctx->current_target_override = saved_target_override;
+
+	free(query_cmd);
+
+	if (retval == JIM_RETURN)
+		retval = cmd_ctx->interp->returnCode;
+
+	if (retval != JIM_OK) {
+		Jim_MakeErrorMessage(cmd_ctx->interp);
+		LOG_TARGET_ERROR(target, "Execution of helper %s failed:\n%s",
+			helper,
+			Jim_GetString(Jim_GetResult(cmd_ctx->interp), NULL));
+		/* clean both error code and stacktrace before return */
+		Jim_Eval(cmd_ctx->interp, "error \"\" \"\"");
+
+		return ERROR_FAIL;
+	}
+
+	int len;
+	const char *result = Jim_GetString(Jim_GetResult(cmd_ctx->interp), &len);
+	if (len == 0)
+		return ERROR_OK;
+	if (strcmp(result, "-1") == 0)
+		return ERROR_NOT_IMPLEMENTED;
+
+	LOG_TARGET_ERROR(target, "Execution of helper %s returned \"%s\"", helper, result);
+	return ERROR_FAIL;
+}
+
 int armv7m_d_cache_flush(struct target *target, uint32_t address,
 	unsigned int length)
+
 {
 	struct armv7m_common *armv7m = target_to_armv7m(target);
 	struct armv7m_cache_common *cache = &armv7m->armv7m_cache;
+
+	int retval = armv7m_cache_helper(target, "event-d-cache-flush", address, length);
+	if (retval != ERROR_NOT_IMPLEMENTED)
+		return retval;
 
 	if (!cache->info_valid)
 		return ERROR_OK;
@@ -224,6 +294,10 @@ int armv7m_i_cache_inval(struct target *target, uint32_t address,
 {
 	struct armv7m_common *armv7m = target_to_armv7m(target);
 	struct armv7m_cache_common *cache = &armv7m->armv7m_cache;
+
+	int retval = armv7m_cache_helper(target, "event-i-cache-flush", address, length);
+	if (retval != ERROR_NOT_IMPLEMENTED)
+		return retval;
 
 	if (!cache->info_valid)
 		return ERROR_OK;
