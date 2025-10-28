@@ -3249,6 +3249,10 @@ ST-LINK server software module}.
 Pairs of vendor IDs and product IDs of the device.
 @end deffn
 
+@deffn {Config Command} {st-link multidrop} dap_name
+Specifies that ST-Link should connect to the specified DAP in multi-drop mode.
+@end deffn
+
 @deffn {Command} {st-link cmd} rx_n (tx_byte)+
 Sends an arbitrary command composed by the sequence of bytes @var{tx_byte}
 and receives @var{rx_n} bytes.

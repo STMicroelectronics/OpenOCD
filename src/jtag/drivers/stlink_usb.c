@@ -406,6 +406,7 @@ static inline int stlink_usb_xfer_noerrcheck(void *handle, const uint8_t *buf, i
 #define STLINK_DEBUG_ENTER_JTAG_RESET      0x00
 #define STLINK_DEBUG_ENTER_SWD_NO_RESET    0xa3
 #define STLINK_DEBUG_ENTER_JTAG_NO_RESET   0xa4
+#define STLINK_DEBUG_ENTER_SWD_MULTIDROP   0xa5
 
 #define STLINK_DEBUG_APIV1_ENTER           0x20
 #define STLINK_DEBUG_EXIT                  0x21
@@ -503,17 +504,18 @@ static inline int stlink_usb_xfer_noerrcheck(void *handle, const uint8_t *buf, i
  * Map the relevant features, quirks and workaround for specific firmware
  * version of stlink
  */
-#define STLINK_F_HAS_TRACE              BIT(0)  /* v2>=j13 || v3     */
-#define STLINK_F_HAS_GETLASTRWSTATUS2   BIT(1)  /* v2>=j15 || v3     */
-#define STLINK_F_HAS_SWD_SET_FREQ       BIT(2)  /* v2>=j22           */
-#define STLINK_F_HAS_JTAG_SET_FREQ      BIT(3)  /* v2>=j24           */
-#define STLINK_F_QUIRK_JTAG_DP_READ     BIT(4)  /* v2>=j24 && v2<j32 */
-#define STLINK_F_HAS_DAP_REG            BIT(5)  /* v2>=j24 || v3     */
-#define STLINK_F_HAS_MEM_16BIT          BIT(6)  /* v2>=j26 || v3     */
-#define STLINK_F_HAS_AP_INIT            BIT(7)  /* v2>=j28 || v3     */
-#define STLINK_F_FIX_CLOSE_AP           BIT(8)  /* v2>=j29 || v3     */
-#define STLINK_F_HAS_DPBANKSEL          BIT(9)  /* v2>=j32 || v3>=j2 */
-#define STLINK_F_HAS_RW8_512BYTES       BIT(10) /*            v3>=j6 */
+#define STLINK_F_HAS_TRACE              BIT(0)  /* v2>=j13 || v3      || v4      */
+#define STLINK_F_HAS_GETLASTRWSTATUS2   BIT(1)  /* v2>=j15 || v3      || v4      */
+#define STLINK_F_HAS_SWD_SET_FREQ       BIT(2)  /* v2>=j22                       */
+#define STLINK_F_HAS_JTAG_SET_FREQ      BIT(3)  /* v2>=j24                       */
+#define STLINK_F_QUIRK_JTAG_DP_READ     BIT(4)  /* v2>=j24 && v2<j32             */
+#define STLINK_F_HAS_DAP_REG            BIT(5)  /* v2>=j24 || v3      || v4      */
+#define STLINK_F_HAS_MEM_16BIT          BIT(6)  /* v2>=j26 || v3      || v4      */
+#define STLINK_F_HAS_AP_INIT            BIT(7)  /* v2>=j28 || v3      || v4      */
+#define STLINK_F_FIX_CLOSE_AP           BIT(8)  /* v2>=j29 || v3      || v4      */
+#define STLINK_F_HAS_DPBANKSEL          BIT(9)  /* v2>=j32 || v3>=j2  || v4      */
+#define STLINK_F_HAS_RW8_512BYTES       BIT(10) /*            v3>=j6  || v4      */
+#define STLINK_F_HAS_SWD_MULTIDROP      BIT(11) /* v2>=j45 || v3>=j15 || v4>=j5  */
 
 /* aliases */
 #define STLINK_F_HAS_TARGET_VOLT        STLINK_F_HAS_TRACE
@@ -556,6 +558,9 @@ static const struct speed_map stlink_khz_to_speed_map_jtag[] = {
 	{281, 128},
 	{140, 256}
 };
+
+/** DAP to connect to in SWD multi-drop */
+static struct adiv5_dap *stlink_multidrop_dap;
 
 static void stlink_usb_init_buffer(void *handle, uint8_t direction, uint32_t size);
 static int stlink_swim_status(void *handle);
@@ -1379,6 +1384,10 @@ static int stlink_usb_version(void *handle)
 		if (h->version.jtag >= 32)
 			flags |= STLINK_F_HAS_DPBANKSEL;
 
+		/* API allows SWD multidrop from V2J45 */
+		if (h->version.jtag >= 45)
+			flags |= STLINK_F_HAS_SWD_MULTIDROP;
+
 		break;
 	case 3:
 		/* all STLINK-V3 use api-v3 */
@@ -1416,6 +1425,10 @@ static int stlink_usb_version(void *handle)
 		if (h->version.jtag >= 6)
 			flags |= STLINK_F_HAS_RW8_512BYTES;
 
+		/* API allows SWD multidrop from V3J15 */
+		if (h->version.jtag >= 15)
+			flags |= STLINK_F_HAS_SWD_MULTIDROP;
+
 		break;
 	case 4:
 		/* STLINK-V3P use api-v3 */
@@ -1450,6 +1463,10 @@ static int stlink_usb_version(void *handle)
 
 		/* 8bit read/write max packet size 512 bytes */
 		flags |= STLINK_F_HAS_RW8_512BYTES;
+
+		/* API allows SWD multidrop from V4J5 */
+		if (h->version.jtag >= 5)
+			flags |= STLINK_F_HAS_SWD_MULTIDROP;
 
 		break;
 	default:
@@ -1614,7 +1631,16 @@ static int stlink_usb_mode_enter(void *handle, enum stlink_mode type)
 				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV1_ENTER;
 			else
 				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_APIV2_ENTER;
-			h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_ENTER_SWD_NO_RESET;
+
+			if ((h->version.flags & STLINK_F_HAS_SWD_MULTIDROP) &&
+					stlink_multidrop_dap && dap_is_multidrop(stlink_multidrop_dap)) {
+				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_ENTER_SWD_MULTIDROP;
+				h->cmdbuf[h->cmdidx++] = 0;
+				h_u32_to_le(h->cmdbuf + h->cmdidx, stlink_multidrop_dap->multidrop_targetsel);
+				h->cmdidx += 4;
+			} else {
+				h->cmdbuf[h->cmdidx++] = STLINK_DEBUG_ENTER_SWD_NO_RESET;
+			}
 			break;
 		case STLINK_MODE_DEBUG_SWIM:
 			h->cmdbuf[h->cmdidx++] = STLINK_SWIM_COMMAND;
@@ -5100,6 +5126,23 @@ COMMAND_HANDLER(stlink_dap_cmd_command)
 	return ERROR_OK;
 }
 
+COMMAND_HANDLER(stlink_dap_multidrop_command)
+{
+	if (CMD_ARGC != 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	struct adiv5_dap *dap =
+		dap_instance_by_jim_obj(CMD_CTX->interp, CMD_JIMTCL_ARGV[0]);
+	if (!dap) {
+		command_print(CMD, "Invalid dap name '%s'", CMD_ARGV[0]);
+		return ERROR_COMMAND_ARGUMENT_INVALID;
+	}
+
+	stlink_multidrop_dap = dap;
+
+	return ERROR_OK;
+}
+
 /** */
 static const struct command_registration stlink_dap_subcommand_handlers[] = {
 	{
@@ -5129,6 +5172,13 @@ static const struct command_registration stlink_dap_subcommand_handlers[] = {
 		.mode = COMMAND_EXEC,
 		.help = "send arbitrary command",
 		.usage = "rx_n (tx_byte)+",
+	},
+	{
+		.name = "multidrop",
+		.handler = stlink_dap_multidrop_command,
+		.mode = COMMAND_CONFIG,
+		.help = "enable multi-drop on specified DAP",
+		.usage = "dap_name",
 	},
 	COMMAND_REGISTRATION_DONE
 };
