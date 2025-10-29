@@ -30,6 +30,7 @@
 #define STLDR_FUNC_ADDR_UNKNOWN         0xFFFFFFFF
 
 /* offsets to mimic STM32CubeProgrammer memory usage */
+#define STACK_SIZE                      0x200
 #define STACK_OFFSET                    0x400
 #define WRITE_BUFFER_OFFSET             0x408
 
@@ -98,11 +99,15 @@ struct stldr_section {
 
 struct stldr_loader {
 	bool parsed;
-	bool relocatable; /* TODO */
+	bool relocatable;
+	bool user_flash_base_addr;
+	bool user_flash_size;
+	uint32_t return_addr;
+	uint32_t offset;
+	uint32_t size;
 	uint32_t func_addr[FUNC_ID_COUNT];
 	struct list_head sections;
-	uint32_t start_addr;
-	uint32_t end_addr;
+	struct working_area *work_area;
 };
 
 enum stldr_type {
@@ -136,6 +141,7 @@ struct stldr_dev_info {
 
 struct stldr_flash_bank {
 	bool probed;
+	uint32_t data_width;
 	struct stldr_loader loader;
 	struct stldr_dev_info dev_info;
 };
@@ -210,8 +216,8 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 {
 	struct stldr_flash_bank *stldr_info = bank->driver_priv;
 	stldr_info->loader.parsed = false;
-	stldr_info->loader.start_addr = 0xFFFFFFFF;
-	stldr_info->loader.end_addr = 0x0;
+	stldr_info->loader.offset = 0;
+	stldr_info->loader.size = 0;
 	Elf32_Ehdr elf_header;
 	Elf32_Shdr section_header;
 
@@ -225,12 +231,6 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 	/* Extract the Elf header */
 	if (fread(&elf_header, sizeof(Elf32_Ehdr), 1, fp) != 1)
 		return ERROR_FAIL;
-
-	/* TODO check if relocatable
-	 * currently reclocatable loaders are not supported, return an error NOT SUPPORTED
-	 * if the loader is linked to a fixed address:
-	 * than issue a warning about a possiblie conflict with the specified workarea
-	 */
 
 	/* Extract the Section header string table offset */
 	Elf32_Off offset_shst = elf_header.e_shoff
@@ -250,41 +250,40 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 		if (fread(&section_header, 1, sizeof(section_header), fp) != sizeof(section_header))
 			return ERROR_FAIL;
 
-		/* Check if section is loadable */
-		if ((section_header.sh_flags & SHF_ALLOC) != 0) {
-			uint8_t *content = malloc(section_header.sh_size);
-			if (!content)
-				return ERROR_FAIL;
+		/* Ignore non loadable sections */
+		if ((section_header.sh_flags & SHF_ALLOC) == 0)
+			continue;
 
-			fseek(fp, section_header.sh_offset, SEEK_SET);
-			if (fread(content, 1, section_header.sh_size, fp) != section_header.sh_size) {
-				free(content);
-				return ERROR_FAIL;
-			}
+		uint8_t *content = malloc(section_header.sh_size);
+		if (!content)
+			return ERROR_FAIL;
 
-			struct stldr_section *section = calloc(sizeof(struct stldr_section), 1);
-			if (!section) {
-				free(content);
-				return ERROR_FAIL;
-			}
-			section->addr = section_header.sh_addr;
-			section->size = section_header.sh_size;
-			section->content = content;
-			section->idx = idx;
-			/* sh_flags already checked against SHF_ALLOC */
-			section->do_write = (section_header.sh_flags & (SHF_EXECINSTR | SHF_WRITE)) != 0;
-
-			list_add_tail(&section->lh, &stldr_info->loader.sections);
-			/* check if the flash loader is relocatable */
-			if ((section->addr & 0xFF000000) == 0 && section->do_write) {
-				stldr_info->loader.relocatable = true;
-				LOG_ERROR("Relocatable flashloaders are not supported");
-				return ERROR_FAIL;
-			}
-
-			LOG_DEBUG("Loader Section found { addr : 0x%08X , size : 0x%08X }",
-					section->addr, section->size);
+		fseek(fp, section_header.sh_offset, SEEK_SET);
+		if (fread(content, 1, section_header.sh_size, fp) != section_header.sh_size) {
+			free(content);
+			return ERROR_FAIL;
 		}
+
+		struct stldr_section *section = calloc(sizeof(struct stldr_section), 1);
+		if (!section) {
+			free(content);
+			return ERROR_FAIL;
+		}
+		section->addr = section_header.sh_addr;
+		section->size = section_header.sh_size;
+		section->content = content;
+		section->idx = idx;
+		/* sh_flags already checked against SHF_ALLOC */
+		section->do_write = (section_header.sh_flags & (SHF_EXECINSTR)) == (SHF_EXECINSTR);
+
+		list_add_tail(&section->lh, &stldr_info->loader.sections);
+
+		/* check if the flash loader is relocatable */
+		if ((section->addr & 0xFF000000) == 0 && section->do_write)
+			stldr_info->loader.relocatable = true;
+
+		LOG_DEBUG("Loader Section found { addr : 0x%08X , size : 0x%08X }",
+				section->addr, section->size);
 	}
 
 	/* get symtab */
@@ -313,12 +312,13 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 		return ERROR_FAIL;
 
 	/* Create the table of Symbols name */
-	char *symbol_names = malloc(str_sym.sh_size); /* FIXME leak */
+	char *symbol_names = malloc(str_sym.sh_size);
 	fseek(fp, str_sym.sh_offset, SEEK_SET);
 	if (fread(symbol_names, 1, str_sym.sh_size, fp) != str_sym.sh_size) {
 		free(symbol_names);
 		return ERROR_FAIL;
 	}
+
 	/* Iterate all symbols */
 	for (int f = 0; f < FUNC_ID_COUNT; f++)
 		stldr_info->loader.func_addr[stldr_functions[f].id] = STLDR_FUNC_ADDR_UNKNOWN;
@@ -344,11 +344,8 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 			struct stldr_section *tmp_sec;
 			list_for_each_entry(tmp_sec, &stldr_info->loader.sections, lh) {
 				LOG_DEBUG("This section starts in %x with size %x", tmp_sec->addr, tmp_sec->size);
-				if ((stldr_info->loader.end_addr < tmp_sec->size + tmp_sec->addr) & tmp_sec->do_write)
-					stldr_info->loader.end_addr = tmp_sec->size + tmp_sec->addr;
-
-				if (stldr_info->loader.start_addr > tmp_sec->addr && tmp_sec->do_write)
-					stldr_info->loader.start_addr  = tmp_sec->addr;
+				if ((stldr_info->loader.size > tmp_sec->size + tmp_sec->addr) && tmp_sec->do_write)
+					stldr_info->loader.size = tmp_sec->size + tmp_sec->addr;
 
 				if (tmp_sec->idx == symbol.st_shndx) {
 					memcpy(storage_info, tmp_sec->content, symbol.st_size);
@@ -371,8 +368,10 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 			}
 		}
 	}
+
 	free(symbol_names);
-	/* check that mandatory functions are found */
+
+	/* Check that mandatory functions are found */
 	for (int f = 0; f < FUNC_ID_COUNT; f++) {
 		if (stldr_functions[f].type == STLDR_FUNC_OPTIONAL)
 			continue;
@@ -380,6 +379,26 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 			LOG_ERROR("Loader function %s not found", stldr_functions[f].name);
 			return ERROR_FAIL;
 		}
+	}
+
+	/* Compute loader size */
+	struct stldr_section *section;
+	uint32_t last_section_addr = 0;
+	uint32_t count_do_write = 0;
+	list_for_each_entry(section, &stldr_info->loader.sections, lh) {
+		if (!section->do_write)
+			continue;
+
+		count_do_write++;
+		if (section->addr >= last_section_addr) {
+			last_section_addr = section->addr;
+			stldr_info->loader.size += section->size;
+		}
+	}
+
+	if (count_do_write > 1) {
+		LOG_ERROR("FlashLoader contain multiple execute sections");
+		return ERROR_FAIL;
 	}
 
 	stldr_info->loader.parsed = true;
@@ -392,6 +411,7 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 FLASH_BANK_COMMAND_HANDLER(stldr_flash_bank_command)
 {
 	struct stldr_flash_bank *stldr_info;
+	uint32_t chip_width = 0;
 
 	if (CMD_ARGC != 6 && CMD_ARGC != 7)
 		return ERROR_COMMAND_SYNTAX_ERROR;
@@ -404,6 +424,17 @@ FLASH_BANK_COMMAND_HANDLER(stldr_flash_bank_command)
 
 	bank->driver_priv = stldr_info;
 
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[3], chip_width);
+	if (chip_width == 0) {
+		chip_width = 32;
+		LOG_DEBUG("The chip_width argument is set to 32");
+	}
+
+	bank->write_start_alignment = chip_width;
+	bank->write_end_alignment = chip_width;
+
+	stldr_info->loader.user_flash_base_addr = bank->base != 0;
+	stldr_info->loader.user_flash_size = bank->size != 0;
 	stldr_info->loader.parsed = false;
 	stldr_info->probed = false;
 
@@ -432,14 +463,51 @@ static int stldr_write_loader(struct flash_bank *bank)
 	struct stldr_flash_bank *stldr_info = bank->driver_priv;
 	struct target *target = bank->target;
 	struct stldr_section *section;
+	uint32_t working_area = target->working_area_phys;
+	uint32_t working_area_size = target->working_area_size;
+
+	if (stldr_info->loader.relocatable) {
+		if (target_alloc_working_area_try(bank->target,
+				stldr_info->loader.size + 4 + STACK_OFFSET,
+				&stldr_info->loader.work_area) != ERROR_OK) {
+			LOG_WARNING("no large enough working area available");
+			return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
+		}
+
+		/* update loader functions offset */
+		stldr_info->loader.return_addr = stldr_info->loader.work_area->address;
+		stldr_info->loader.offset = stldr_info->loader.work_area->address + 4;
+		LOG_INFO("loader offset 0x%08X", stldr_info->loader.offset);
+	}
 
 	list_for_each_entry(section, &stldr_info->loader.sections, lh) {
 		if (!section->do_write)
 			continue;
-		/* TODO: warning if Work area does not match the sections addresses */
-		int retval = target_write_buffer(target, section->addr, section->size, section->content);
-		if (retval != ERROR_OK)
-			return retval;
+
+		if (!stldr_info->loader.relocatable) {
+			if (section->addr >= working_area && (section->addr <= working_area + working_area_size)
+				&& (section->addr + section->size >= working_area)
+				&& (section->addr + section->size <= working_area + working_area_size)) {
+				LOG_ERROR("cannot cross workarea with loader address");
+				return ERROR_FAIL;
+			}
+
+			int retval = target_write_memory(target, section->addr, 4, section->size / 4, section->content);
+			if (retval != ERROR_OK)
+				return retval;
+
+			/* update loader functions offset */
+			stldr_info->loader.return_addr = section->addr - 4;
+			stldr_info->loader.offset = section->addr;
+			LOG_INFO("loader offset 0x%08X", stldr_info->loader.offset);
+		} else {
+			int retval = target_write_buffer(target, section->addr + stldr_info->loader.offset,
+							section->size, section->content);
+			if (retval != ERROR_OK) {
+				target_free_working_area(target, stldr_info->loader.work_area);
+				return retval;
+			}
+		}
 	}
 
 	return ERROR_OK;
@@ -466,6 +534,9 @@ static int stldr_exec_function(struct flash_bank *bank, enum stldr_func_id func_
 		return ERROR_FAIL;
 	}
 
+	const uint32_t func_addr = stldr_info->loader.func_addr[func_id] +
+			(stldr_info->loader.relocatable ? stldr_info->loader.offset : 0);
+
 	LOG_INFO("Running loader function %s(0x%" PRIx32 ", 0x%" PRIx32 ", 0x%" PRIx32 ", 0x%" PRIx32 ")",
 		stldr_functions[func_id].name, args->arg_0, args->arg_1, args->arg_2, args->arg_3);
 
@@ -483,44 +554,62 @@ static int stldr_exec_function(struct flash_bank *bank, enum stldr_func_id func_
 	buf_set_u32(reg_params[3].value, 0, 32, args->arg_3);
 
 	/* write algo stack pointer */
-	/* FIXME compute stack address from workarea */
-	uint32_t estack = ROUND_TO_DWORD(stldr_info->loader.end_addr  + STACK_OFFSET);
+	uint32_t estack;
+	if (stldr_info->loader.relocatable)
+		estack = stldr_info->loader.work_area->size + stldr_info->loader.work_area->address;
+	else
+		estack = stldr_info->loader.size + stldr_info->loader.offset + STACK_OFFSET;
 	init_reg_param(&reg_params[4], "sp", 32, PARAM_OUT);
 	buf_set_u32(reg_params[4].value, 0, 32, estack);
-	const uint32_t return_addr = stldr_info->loader.start_addr  & 0xFFFFFF00;
 	init_reg_param(&reg_params[5], "lr", 32, PARAM_OUT);
-	buf_set_u32(reg_params[5].value, 0, 32, return_addr | 0x1);
+	buf_set_u32(reg_params[5].value, 0, 32, stldr_info->loader.return_addr | 0x1);
 
 	/* execute function */
-	breakpoint_add(target, return_addr, 2, BKPT_SOFT);
+	breakpoint_add(target, stldr_info->loader.return_addr, 2, BKPT_SOFT);
 	int retval = target_run_algorithm(target,
 			0, NULL,
 			ARRAY_SIZE(reg_params), reg_params,
-			stldr_info->loader.func_addr[func_id],
-			return_addr, timeout_ms, &armv7m_info);
+			func_addr,
+			stldr_info->loader.return_addr, timeout_ms, &armv7m_info);
 
-	breakpoint_remove(target, return_addr);
+	breakpoint_remove(target, stldr_info->loader.return_addr);
 
 	if (retval != ERROR_OK) {
 		LOG_ERROR("Failed to run loader function %s(...) %s",
 			stldr_functions[func_id].name,
 			retval == ERROR_TARGET_TIMEOUT ? " : timeout reached" : ""
 		);
-		return retval;
+		goto exit;
 	}
 
 	args->ret = buf_get_u32(reg_params[0].value, 0, 32);
 	LOG_DEBUG("Loader function %s(...) returned %d", stldr_functions[func_id].name, args->ret);
+exit:
+	destroy_reg_param(&reg_params[0]);
+	destroy_reg_param(&reg_params[1]);
+	destroy_reg_param(&reg_params[2]);
+	destroy_reg_param(&reg_params[3]);
+	destroy_reg_param(&reg_params[4]);
+	destroy_reg_param(&reg_params[5]);
+	return retval;
+}
 
-	return ERROR_OK;
+static int stldr_exec_function_deinit(struct flash_bank *bank)
+{
+	struct stldr_flash_bank *stldr_info = bank->driver_priv;
+	return target_free_working_area(bank->target, stldr_info->loader.work_area);
 }
 
 static int stldr_exec_function_init(struct flash_bank *bank)
 {
 	struct stldr_func_args args;
 	stldr_func_args_init(&args);
-	stldr_write_loader(bank);
-	int retval = stldr_exec_function(bank, FUNC_ID_INIT, STLDR_INIT_TIMEOUT, &args);
+
+	int retval = stldr_write_loader(bank);
+	if (retval != ERROR_OK)
+		return retval;
+
+	retval = stldr_exec_function(bank, FUNC_ID_INIT, STLDR_INIT_TIMEOUT, &args);
 	if (retval != ERROR_OK || args.ret != STLDR_FUNC_SUCCESS)
 		return ERROR_FLASH_OPERATION_FAILED;
 
@@ -538,14 +627,18 @@ static int stldr_exec_function_mass_erase(struct flash_bank *bank)
 	stldr_func_args_init(&args);
 
 	int retval = stldr_exec_function_init(bank);
-		if (retval != ERROR_OK)
+		if (retval != ERROR_OK) {
+			stldr_exec_function_deinit(bank);
 			return retval;
+		}
 
 	retval = stldr_exec_function(bank, FUNC_ID_MASS_ERASE, timeout, &args);
-	if (retval != ERROR_OK || args.ret != STLDR_FUNC_SUCCESS)
+	if (retval != ERROR_OK || args.ret != STLDR_FUNC_SUCCESS) {
+		stldr_exec_function_deinit(bank);
 		return ERROR_FLASH_OPERATION_FAILED;
+	}
 
-	return ERROR_OK;
+	return stldr_exec_function_deinit(bank);
 }
 
 static int stldr_exec_function_sector_erase(struct flash_bank *bank,
@@ -588,12 +681,15 @@ static int stldr_erase(struct flash_bank *bank, unsigned int first,
 		unsigned int last)
 {
 	int retval = stldr_exec_function_init(bank);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stldr_exec_function_deinit(bank);
 		return retval;
+	}
 
 	retval = stldr_exec_function_sector_erase(bank,
 			bank->base + bank->sectors[first].offset,
 			bank->base + bank->sectors[last].offset);
+	stldr_exec_function_deinit(bank);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -603,7 +699,7 @@ static int stldr_erase(struct flash_bank *bank, unsigned int first,
 static int stldr_protect(struct flash_bank *bank, int set, unsigned int first,
 		unsigned int last)
 {
-	LOG_ERROR("the stldr driver does not support option bytes modification");
+	LOG_ERROR("The stldr driver does not support option bytes modification");
 
 	return ERROR_FLASH_OPER_UNSUPPORTED;
 }
@@ -612,43 +708,54 @@ static int stldr_write(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
 	struct stldr_flash_bank *stldr_info = bank->driver_priv;
-	struct stldr_dev_info *dev_info = &stldr_info->dev_info;
+
+	int retval = stldr_exec_function_init(bank);
+	if (retval != ERROR_OK) {
+		stldr_exec_function_deinit(bank);
+		return retval;
+	}
 
 	uint32_t buffer_size = target_get_working_area_avail(bank->target);
+	/* buffer_size should be multiple of stldr_info->data_width */
+	buffer_size &= ~(stldr_info->data_width - 1);
+
+	if (buffer_size < 256) {
+		LOG_WARNING("large enough working area not available, can't do block memory writes");
+		stldr_exec_function_deinit(bank);
+		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
+	}
+	/* FIXME do a bench to check size */
+	//else if (buffer_size > 16384) {
+	//	/* probably won't benefit from more than 16k ... */
+	//	buffer_size = 16384;
+	//}
+
 	LOG_INFO("workarea size: %x", buffer_size);
 	LOG_INFO("workarea address: " TARGET_ADDR_FMT, bank->target->working_area_phys);
 
-	/* should be enforced via bank->write_start_alignment */
-	if (offset % dev_info->page_size)
-		LOG_INFO("ERROR offset and page not aligned %x %x", offset, dev_info->page_size);
+	/* The flash write must be aligned to the 'stldr_info->data_width' boundary.
+	 * The flash infrastructure ensures it, do just a security check */
+	assert(offset % stldr_info->data_width == 0);
+	assert(count % stldr_info->data_width == 0);
 
-	/* should be enforced via bank->write_end_alignment */
-	if (!(count % buffer_size))
-		LOG_INFO("ERROR count and buffer not aligned %x %x", count, buffer_size);
-
-	int retval = stldr_exec_function_init(bank);
-	if (retval != ERROR_OK)
-		return retval;
-
-	// TODO: a hint when supporting relocatable loader
 	struct working_area *source;
 	if (target_alloc_working_area_try(bank->target, buffer_size, &source) != ERROR_OK) {
 		LOG_WARNING("no large enough working area available");
+		stldr_exec_function_deinit(bank);
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
 	}
 
-	const uint32_t buffer_addr = ROUND_TO_DWORD(stldr_info->loader.end_addr + WRITE_BUFFER_OFFSET);
 	uint32_t address = bank->base + offset;
 
 	while (count > 0) {
 		if (count < buffer_size)
 			buffer_size = count;
 
-		retval = target_write_buffer(bank->target, buffer_addr, buffer_size, buffer);
+		retval = target_write_buffer(bank->target, source->address, buffer_size, buffer);
 		if (retval != ERROR_OK)
 			goto exit_error;
 
-		retval = stldr_exec_function_write(bank, address, buffer_size, buffer_addr);
+		retval = stldr_exec_function_write(bank, address, buffer_size, source->address);
 		if (retval != ERROR_OK)
 			goto exit_error;
 
@@ -656,10 +763,12 @@ static int stldr_write(struct flash_bank *bank, const uint8_t *buffer,
 		address += buffer_size;
 		count -= buffer_size;
 	}
+	stldr_exec_function_deinit(bank);
 	target_free_working_area(bank->target, source);
 	return ERROR_OK;
 
 exit_error:
+	stldr_exec_function_deinit(bank);
 	target_free_working_area(bank->target, source);
 	return ERROR_FLASH_OPERATION_FAILED;
 }
@@ -672,17 +781,24 @@ static int stldr_read(struct flash_bank *bank,
 
 	/* init is needed for default_flash_read as well */
 	int retval = stldr_exec_function_init(bank);
-	if (retval != ERROR_OK)
+	if (retval != ERROR_OK) {
+		stldr_exec_function_deinit(bank);
 		return retval;
+	}
 
-	if (stldr_info->loader.func_addr[FUNC_ID_READ] == 0xFFFFFFFF)
-		return default_flash_read(bank, buffer, offset, count);
+	if (stldr_info->loader.func_addr[FUNC_ID_READ] == 0xFFFFFFFF) {
+		int ret = default_flash_read(bank, buffer, offset, count);
+		stldr_exec_function_deinit(bank);
+		return ret;
+	}
 
+	/* FIXME the code below is not tested (Read function from stldr) */
 	const uint32_t block_size = dev_info->page_size;
 
-	struct working_area *source;
-	if (target_alloc_working_area_try(bank->target, block_size, &source) != ERROR_OK) {
+	struct working_area *buffer_area;
+	if (target_alloc_working_area_try(bank->target, block_size, &buffer_area) != ERROR_OK) {
 		LOG_WARNING("no large enough working area available");
+		stldr_exec_function_deinit(bank);
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
 	}
 
@@ -690,11 +806,11 @@ static int stldr_read(struct flash_bank *bank,
 	while (count > 0) {
 		const uint32_t read_block_size = MIN(count, block_size);
 
-		retval = stldr_exec_function_read(bank, address, read_block_size, source->address);
+		retval = stldr_exec_function_read(bank, address, read_block_size, buffer_area->address);
 		if (retval != ERROR_OK)
 			goto exit_error;
 
-		retval = target_read_buffer(bank->target, source->address, read_block_size, buffer);
+		retval = target_read_buffer(bank->target, buffer_area->address, read_block_size, buffer);
 		if (retval != ERROR_OK)
 			goto exit_error;
 
@@ -703,11 +819,13 @@ static int stldr_read(struct flash_bank *bank,
 		count -= read_block_size;
 	}
 
-	target_free_working_area(bank->target, source);
+	stldr_exec_function_deinit(bank);
+	target_free_working_area(bank->target, buffer_area);
 	return ERROR_OK;
 
 exit_error:
-	target_free_working_area(bank->target, source);
+	stldr_exec_function_deinit(bank);
+	target_free_working_area(bank->target, buffer_area);
 	return ERROR_FLASH_OPERATION_FAILED;
 }
 
@@ -723,11 +841,12 @@ static int stldr_probe(struct flash_bank *bank)
 
 	free(bank->sectors);
 
-	bank->base = dev_info->base_addr;
-	bank->size = dev_info->size;
-	bank->write_start_alignment = dev_info->page_size;
-	bank->write_end_alignment = dev_info->page_size;
+	if (!stldr_info->loader.user_flash_base_addr)
+		bank->base = dev_info->base_addr;
+	if (!stldr_info->loader.user_flash_size)
+		bank->size = dev_info->size;
 
+	stldr_info->data_width = bank->write_start_alignment;
 
 	bank->num_sectors = 0;
 	for (unsigned int i = 0; i < dev_info->n_sectors; i++)
@@ -771,12 +890,23 @@ static int stldr_auto_probe(struct flash_bank *bank)
 
 static int stldr_get_info(struct flash_bank *bank, struct command_invocation *cmd)
 {
-	return ERROR_FLASH_OPER_UNSUPPORTED; /* TODO */
+	struct stldr_flash_bank *stldr_info = bank->driver_priv;
+	struct stldr_dev_info *dev_info = &stldr_info->dev_info;
+
+	if (dev_info)
+		command_print_sameline(cmd, "Loader file for %s ", dev_info->name);
+	else
+		command_print_sameline(cmd, "Please check if you have set correctly the loader file");
+
+	return ERROR_OK;
 }
 
 static int stldr_protect_check(struct flash_bank *bank)
 {
-	return ERROR_FLASH_OPER_UNSUPPORTED; /* TODO return unknown protection */
+	/* probe is required before cheking protection */
+	/* No thing to do since we set the protection to unknown during the prob */
+	LOG_WARNING("The stldr driver does not support flash protection");
+	return ERROR_OK;
 }
 
 COMMAND_HANDLER(stldr_handle_set_loader_command)
@@ -835,6 +965,7 @@ COMMAND_HANDLER(stldr_handle_init_command)
 
 	return retval;
 }
+
 static const struct command_registration stldr_subcommand_handlers[] = {
 	{
 		.name = "set_loader",
@@ -881,7 +1012,7 @@ const struct flash_driver stldr_flash = {
 		.read = stldr_read,
 		.probe = stldr_probe,
 		.auto_probe = stldr_auto_probe,
-		.erase_check = default_flash_blank_check, /* TODO check this later */
+		.erase_check = default_flash_blank_check,
 		.protect_check = stldr_protect_check,
 		.info = stldr_get_info,
 		.free_driver_priv = stldr_free_driver_priv
