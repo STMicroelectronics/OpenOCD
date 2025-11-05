@@ -38,6 +38,7 @@ struct armv7m_arch_cache {
 // common cache information
 struct armv7m_cache_common {
 	bool info_valid;
+	bool defer_identification;
 	unsigned int loc;					// level of coherency
 	uint32_t d_min_line_len;			// minimum d-cache line_len
 	uint32_t i_min_line_len;			// minimum i-cache line_len
@@ -47,6 +48,7 @@ struct armv7m_cache_common {
 };
 
 int armv7m_identify_cache(struct target *target);
+int armv7m_deferred_identify_cache(struct target *target);
 int armv7m_d_cache_flush(struct target *target, uint32_t address,
 	unsigned int length);
 int armv7m_i_cache_inval(struct target *target, uint32_t address,
