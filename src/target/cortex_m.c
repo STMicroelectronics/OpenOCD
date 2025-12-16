@@ -2709,10 +2709,12 @@ int cortex_m_examine(struct target *target)
 		 * Use a safe value of sticky S_RESET_ST for cache detection, before
 		 * clearing it below.
 		 */
-		retval = armv7m_identify_cache(target);
-		if (retval != ERROR_OK) {
-			LOG_ERROR("Cannot detect cache");
-			return retval;
+		if (!armv7m->is_hla_target) {
+			retval = armv7m_identify_cache(target);
+			if (retval != ERROR_OK) {
+				LOG_ERROR("Cannot detect cache");
+				return retval;
+			}
 		}
 
 		/*  Don't cumulate sticky S_RESET_ST at the very first read of DHCSR
