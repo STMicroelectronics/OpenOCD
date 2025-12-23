@@ -420,6 +420,10 @@ static const struct stm32l4_rev stm32wle_wl5xx_revs[] = {
 	{ 0x1000, "1.0" },
 };
 
+static const struct stm32l4_rev stm32wl4xx_revs[] = {
+	{ 0x1000, "A" },
+};
+
 static const struct stm32l4_rev stm32u53_u54xx_revs[] = {
 	{ 0x1000, "A" },
 };
@@ -813,6 +817,18 @@ static const struct stm32l4_part_info stm32l4_parts[] = {
 	  .fsize_addr            = 0x1FFF75E0,
 	  .otp_base              = 0x1FFF7000,
 	  .otp_size              = 1024,
+	},
+	{
+	  .id                    = DEVID_STM32WL4XX,
+	  .revs                  = stm32wl4xx_revs,
+	  .num_revs              = ARRAY_SIZE(stm32wl4xx_revs),
+	  .device_str            = "STM32WL4xx",
+	  .max_flash_size_kb     = 512,
+	  .flags                 = F_HAS_TZ | F_HAS_L5_FLASH_REGS | F_WRP_HAS_LOCK,
+	  .flash_regs_base       = 0x48100000,
+	  .fsize_addr            = 0x0BF86F98,
+	  .otp_base              = 0x0BF86800,
+	  .otp_size              = 512,
 	},
 	{
 	  .id                    = DEVID_STM32U53_U54XX,
@@ -2232,6 +2248,7 @@ static int stm32l4_probe(struct flash_bank *bank)
 	case DEVID_STM32G43_G44XX:
 	case DEVID_STM32G49_G4AXX:
 	case DEVID_STM32WB1XX:
+	case DEVID_STM32WL4XX:
 		/* single bank flash */
 		page_size_kb = 2;
 		num_pages = flash_size_kb / page_size_kb;
