@@ -190,8 +190,9 @@ static int armv7m_identify_cache_internal(struct target *target)
 }
 
 /*
- * On Cortex-M7 only, when the CPU is kept in reset, several registers of the
- * System Control Space (SCS) are not accessible and return bus error.
+ * On Cortex-M7 and Cortex-M85, when the CPU is kept in reset, several
+ * registers of the System Control Space (SCS) are not accessible and
+ * return bus error.
  * The list of accessible registers is:
  * - 0xE000ED00
  * - 0xE000ED30
@@ -200,7 +201,7 @@ static int armv7m_identify_cache_internal(struct target *target)
  * - 0xE000EFD0 ... 0xE000EFFC
  * This makes impossible detecting the cache during the reset.
  * Use a deferred mechanism to detect the cache during polling or when the
- * Cortex-M7 halts.
+ * CPU halts.
  */
 int armv7m_identify_cache(struct target *target)
 {
@@ -211,7 +212,8 @@ int armv7m_identify_cache(struct target *target)
 	if (cache->info_valid)
 		return ERROR_OK;
 
-	if (cortex_m->core_info->impl_part == CORTEX_M7_PARTNO
+	enum cortex_m_impl_part part = cortex_m->core_info->impl_part;
+	if ((part == CORTEX_M7_PARTNO || part == CORTEX_M85_PARTNO)
 			&& cortex_m->dcb_dhcsr & S_RESET_ST) {
 		cache->defer_identification = true;
 		return ERROR_OK;
