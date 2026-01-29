@@ -150,6 +150,7 @@ static int armv7m_identify_cache_internal(struct target *target)
 
 		// separate d or unified d/i cache at this level ?
 		if (ctype & (CLIDR_CTYPE_UNIFIED_CACHE | CLIDR_CTYPE_D_CACHE)) {
+			cache->has_d_u_cache = true;
 			cache->arch[cl].d_u_size = decode_ccsidr(d_u_ccsidr[cl]);
 
 			LOG_TARGET_DEBUG(target,
@@ -167,6 +168,7 @@ static int armv7m_identify_cache_internal(struct target *target)
 		}
 
 		if (ctype & CLIDR_CTYPE_I_CACHE) {
+			cache->has_i_cache = true;
 			cache->arch[cl].i_size = decode_ccsidr(i_ccsidr[cl]);
 
 			LOG_TARGET_DEBUG(target,
@@ -306,7 +308,6 @@ static int armv7m_cache_helper(struct target *target, const char *helper,
 
 int armv7m_d_cache_flush(struct target *target, uint32_t address,
 	unsigned int length)
-
 {
 	struct armv7m_common *armv7m = target_to_armv7m(target);
 	struct armv7m_cache_common *cache = &armv7m->armv7m_cache;
@@ -315,15 +316,7 @@ int armv7m_d_cache_flush(struct target *target, uint32_t address,
 	if (retval != ERROR_NOT_IMPLEMENTED)
 		return retval;
 
-	if (!cache->info_valid)
-		return ERROR_OK;
-
-	if (target->state != TARGET_HALTED) {
-		LOG_TARGET_ERROR(target, "not halted");
-		return ERROR_TARGET_NOT_HALTED;
-	}
-
-	if (!armv7m->armv7m_cache.d_u_cache_enabled)
+	if (!cache->info_valid || !cache->has_d_u_cache)
 		return ERROR_OK;
 
 	uint32_t line_len = cache->d_min_line_len;
@@ -331,7 +324,9 @@ int armv7m_d_cache_flush(struct target *target, uint32_t address,
 	uint32_t addr_end = address + length;
 
 	while (addr_line < addr_end) {
-		mem_ap_write_u32(armv7m->debug_ap, DCCIMVAC, addr_line);
+		retval = mem_ap_write_u32(armv7m->debug_ap, DCCIMVAC, addr_line);
+		if (retval != ERROR_OK)
+			return retval;
 		addr_line += line_len;
 		keep_alive();
 	}
@@ -349,15 +344,7 @@ int armv7m_i_cache_inval(struct target *target, uint32_t address,
 	if (retval != ERROR_NOT_IMPLEMENTED)
 		return retval;
 
-	if (!cache->info_valid)
-		return ERROR_OK;
-
-	if (target->state != TARGET_HALTED) {
-		LOG_TARGET_ERROR(target, "not halted");
-		return ERROR_TARGET_NOT_HALTED;
-	}
-
-	if (!armv7m->armv7m_cache.i_cache_enabled)
+	if (!cache->info_valid || !cache->has_i_cache)
 		return ERROR_OK;
 
 	uint32_t line_len = cache->i_min_line_len;
@@ -365,7 +352,9 @@ int armv7m_i_cache_inval(struct target *target, uint32_t address,
 	uint32_t addr_end = address + length;
 
 	while (addr_line < addr_end) {
-		mem_ap_write_u32(armv7m->debug_ap, ICIMVAU, addr_line);
+		retval = mem_ap_write_u32(armv7m->debug_ap, ICIMVAU, addr_line);
+		if (retval != ERROR_OK)
+			return retval;
 		addr_line += line_len;
 		keep_alive();
 	}

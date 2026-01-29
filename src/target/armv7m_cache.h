@@ -39,12 +39,12 @@ struct armv7m_arch_cache {
 struct armv7m_cache_common {
 	bool info_valid;
 	bool defer_identification;
+	bool has_i_cache;
+	bool has_d_u_cache;
 	unsigned int loc;					// level of coherency
 	uint32_t d_min_line_len;			// minimum d-cache line_len
 	uint32_t i_min_line_len;			// minimum i-cache line_len
 	struct armv7m_arch_cache arch[6];	// cache info, L1 - L7
-	bool i_cache_enabled;
-	bool d_u_cache_enabled;
 };
 
 int armv7m_identify_cache(struct target *target);

@@ -895,14 +895,10 @@ static int cortex_m_debug_entry(struct target *target)
 		secure_state ? "Secure" : "Non-Secure",
 		target_state_name(target));
 
-	if (armv7m->armv7m_cache.info_valid) {
-		armv7m->armv7m_cache.d_u_cache_enabled = ccr & CCR_DC_MASK;
-		armv7m->armv7m_cache.i_cache_enabled = ccr & CCR_IC_MASK;
-
+	if (armv7m->armv7m_cache.info_valid)
 		LOG_TARGET_DEBUG(target, "D-Cache %s, I-Cache %s",
-			armv7m->armv7m_cache.d_u_cache_enabled ? "enabled" : "disabled",
-			armv7m->armv7m_cache.i_cache_enabled ? "enabled" : "disabled");
-	}
+			(ccr & CCR_DC_MASK) ? "enabled" : "disabled",
+			(ccr & CCR_IC_MASK) ? "enabled" : "disabled");
 
 	if (armv7m->post_debug_entry) {
 		retval = armv7m->post_debug_entry(target);
