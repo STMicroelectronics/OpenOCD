@@ -931,6 +931,32 @@ COMMAND_HANDLER(stldr_handle_set_loader_command)
 	return retval;
 }
 
+COMMAND_HANDLER(stldr_handle_set_size_command)
+{
+	if (CMD_ARGC < 2)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	struct flash_bank *bank;
+	int retval = CALL_COMMAND_HANDLER(flash_command_get_bank_probe_optional, 0, &bank, false);
+	if (retval != ERROR_OK)
+		return retval;
+
+	struct stldr_flash_bank *stldr_info = bank->driver_priv;
+	stldr_info->probed = false;
+
+	uint32_t bank_size;
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[1], bank_size);
+	if (bank_size == 0) {
+		LOG_ERROR("The bank size could not be zero");
+		return ERROR_COMMAND_ARGUMENT_INVALID;
+	}
+
+	bank->size = bank_size;
+	stldr_info->loader.user_flash_size = true;
+
+	return retval;
+}
+
 COMMAND_HANDLER(stldr_handle_mass_erase_command)
 {
 	if (CMD_ARGC < 1)
@@ -976,6 +1002,13 @@ static const struct command_registration stldr_subcommand_handlers[] = {
 		.mode = COMMAND_ANY,
 		.usage = "bank_id path/to/stldr",
 		.help = "set loader path"
+	},
+	{
+		.name = "set_size",
+		.handler = stldr_handle_set_size_command,
+		.mode = COMMAND_ANY,
+		.usage = "bank_id size",
+		.help = "set bank size"
 	},
 	{
 		.name = "mass_erase",
