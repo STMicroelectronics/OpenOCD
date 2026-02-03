@@ -919,6 +919,9 @@ COMMAND_HANDLER(stldr_handle_set_loader_command)
 	if (retval != ERROR_OK)
 		return retval;
 
+	struct stldr_flash_bank *stldr_info = bank->driver_priv;
+	stldr_info->probed = false;
+
 	retval = stldr_parse(bank, CMD_ARGV[1]);
 	if (retval == ERROR_OK)
 		command_print(CMD, "stldr file parsing succeeded");
