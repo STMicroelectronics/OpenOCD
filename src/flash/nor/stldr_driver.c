@@ -915,7 +915,7 @@ COMMAND_HANDLER(stldr_handle_set_loader_command)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
 	struct flash_bank *bank;
-	int retval = CALL_COMMAND_HANDLER(flash_command_get_bank, 0, &bank);
+	int retval = CALL_COMMAND_HANDLER(flash_command_get_bank_probe_optional, 0, &bank, false);
 	if (retval != ERROR_OK)
 		return retval;
 
