@@ -461,10 +461,12 @@ static void stldr_free_driver_priv(struct flash_bank *bank)
 {
 	struct stldr_flash_bank *stldr_info = bank->driver_priv;
 
-	struct stldr_section *tmp, *section;
-	list_for_each_entry_safe(section, tmp, &stldr_info->loader.sections, lh) {
-		free(section->content);
-		free(section);
+	if (stldr_info->loader.sections.prev || stldr_info->loader.sections.next) {
+		struct stldr_section *tmp, *section;
+		list_for_each_entry_safe(section, tmp, &stldr_info->loader.sections, lh) {
+			free(section->content);
+			free(section);
+		}
 	}
 
 	free(bank->driver_priv);
