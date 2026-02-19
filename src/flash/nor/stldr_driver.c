@@ -19,6 +19,7 @@
 #include <target/algorithm.h>
 #include <target/breakpoints.h>
 #include <target/cortex_m.h>
+#include <sys/stat.h>
 
 #include "imp.h"
 #define ROUND_TO_DWORD(x) (((size_t)(x) + 7) & ~0x07UL)
@@ -220,6 +221,18 @@ static int stldr_parse(struct flash_bank *bank, const char *stldr_path)
 	stldr_info->loader.size = 0;
 	Elf32_Ehdr elf_header;
 	Elf32_Shdr section_header;
+
+	/* Check that path exists and is a regular file, not a directory */
+	struct stat st;
+	if (stat(stldr_path, &st) != 0) {
+		LOG_ERROR("stldr: cannot access '%s'", stldr_path);
+		return ERROR_FAIL;
+	}
+
+	if (!S_ISREG(st.st_mode)) {
+		LOG_ERROR("stldr: '%s' is not a regular file", stldr_path);
+		return ERROR_FAIL;
+	}
 
 	/* Open file in read mode */
 	FILE *fp = fopen(stldr_path, "rb");
