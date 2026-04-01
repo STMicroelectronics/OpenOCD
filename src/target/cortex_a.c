@@ -86,6 +86,77 @@ static unsigned int ilog2(unsigned int x)
 	return y;
 }
 
+/*
+ * If we halted last time due to a bkpt instruction, then we have to manually
+ * step over it, otherwise the core will break again
+ */
+static int cortex_a_maybe_skip_bkpt_inst(struct target *target,
+		bool *inst_found)
+{
+	struct armv7a_common *armv7a = target_to_armv7a(target);
+	struct arm *arm = &armv7a->arm;
+	bool result = false;
+
+	if (target->debug_reason != DBG_REASON_BREAKPOINT)
+		goto out;
+
+	uint32_t pc = buf_get_u32(arm->pc->value, 0, 32);
+
+	switch (arm->core_state) {
+	case ARM_STATE_ARM:
+		{
+			uint32_t bkpt = ARMV5_BKPT(0);
+			uint32_t mask = ~(ARMV5_BKPT(0) ^ ARMV5_BKPT(0xffff));
+			uint32_t opcode;
+
+			int retval = target_read_u32(target, pc, &opcode);
+			if (retval != ERROR_OK)
+				return retval;
+
+			pc += 4;
+			if ((opcode & mask) == bkpt)
+				result = true;
+		}
+		break;
+
+	case ARM_STATE_THUMB:
+	case ARM_STATE_THUMB_EE:
+		{
+			uint16_t bkpt = (uint16_t)ARMV5_T_BKPT(0);
+			uint16_t mask = (uint16_t)~(ARMV5_T_BKPT(0) ^ ARMV5_T_BKPT(0xff));
+			uint16_t opcode;
+
+			// Drop PC bit 0, always set in Thumb state
+			int retval = target_read_u16(target, pc & ~0x1U, &opcode);
+			if (retval != ERROR_OK)
+				return retval;
+
+			pc += 2;
+			if ((opcode & mask) == bkpt)
+				result = true;
+		}
+		break;
+
+	default:
+		LOG_TARGET_ERROR(target, "Unsupported core state");
+		return ERROR_FAIL;
+	}
+
+	if (result) {
+		// New PC to skip bkpt instruction
+		buf_set_u32(arm->pc->value, 0, 32, pc);
+		arm->pc->dirty = true;
+		arm->pc->valid = true;
+		LOG_TARGET_DEBUG(target, "Skipping over BKPT instruction");
+	}
+
+out:
+	if (inst_found)
+		*inst_found = result;
+
+	return ERROR_OK;
+}
+
 /*  restore cp15_control_reg at resume */
 static int cortex_a_restore_cp15_control_reg(struct target *target)
 {
@@ -1214,7 +1285,6 @@ static int cortex_a_step(struct target *target, int current, target_addr_t addre
 	struct breakpoint *breakpoint = NULL;
 	struct breakpoint stepbreakpoint;
 	struct reg *r;
-	int retval;
 
 	if (target->state != TARGET_HALTED) {
 		LOG_TARGET_ERROR(target, "not halted");
@@ -1237,6 +1307,28 @@ static int cortex_a_step(struct target *target, int current, target_addr_t addre
 		breakpoint = breakpoint_find(target, address);
 		if (breakpoint)
 			cortex_a_unset_breakpoint(target, breakpoint);
+	}
+
+	bool bkpt_inst_found = false;
+	int retval = cortex_a_maybe_skip_bkpt_inst(target, &bkpt_inst_found);
+	if (retval != ERROR_OK)
+		return retval;
+
+	if (bkpt_inst_found) {
+		/*
+		 * FW includes a breakpoint instruction at current PC.
+		 * Update the PC for a dummy single step!
+		 */
+		target->debug_reason = DBG_REASON_SINGLESTEP;
+		target_call_event_callbacks(target, TARGET_EVENT_RESUMED);
+
+		if (breakpoint)
+			cortex_a_set_breakpoint(target, breakpoint, 0);
+
+		target->debug_reason = DBG_REASON_BREAKPOINT;
+		target_call_event_callbacks(target, TARGET_EVENT_HALTED);
+
+		return ERROR_OK;
 	}
 
 	/* Setup single step breakpoint */
