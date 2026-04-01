@@ -1242,7 +1242,8 @@ static int cortex_a_step(struct target *target, int current, target_addr_t addre
 	/* Setup single step breakpoint */
 	stepbreakpoint.address = address;
 	stepbreakpoint.asid = 0;
-	stepbreakpoint.length = (arm->core_state == ARM_STATE_THUMB)
+	stepbreakpoint.length = (arm->core_state == ARM_STATE_THUMB ||
+							 arm->core_state == ARM_STATE_THUMB_EE)
 		? 2 : 4;
 	stepbreakpoint.type = BKPT_HARD;
 	stepbreakpoint.is_set = false;
