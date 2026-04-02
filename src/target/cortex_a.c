@@ -967,6 +967,13 @@ static int cortex_a_internal_restore(struct target *target, int current,
 	arm->pc->dirty = true;
 	arm->pc->valid = true;
 
+	if (!debug_execution &&
+			!breakpoint_find(target, buf_get_u32(arm->pc->value, 0, 32))) {
+		retval = cortex_a_maybe_skip_bkpt_inst(target, NULL);
+		if (retval != ERROR_OK)
+			return retval;
+	}
+
 	/* restore dpm_mode at system halt */
 	arm_dpm_modeswitch(&armv7a->dpm, ARM_MODE_ANY);
 	/* called it now before restoring context because it uses cpu
