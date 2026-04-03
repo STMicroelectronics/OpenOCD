@@ -66,6 +66,10 @@ static int cortex_a_set_hybrid_breakpoint(struct target *target,
 	struct breakpoint *breakpoint);
 static int cortex_a_unset_breakpoint(struct target *target,
 	struct breakpoint *breakpoint);
+static int cortex_a_set_watchpoint(struct target *target,
+	struct watchpoint *watchpoint);
+static int cortex_a_unset_watchpoint(struct target *target,
+	struct watchpoint *watchpoint);
 static int cortex_a_wait_dscr_bits(struct target *target, uint32_t mask,
 	uint32_t value, uint32_t *dscr);
 static int cortex_a_mmu(struct target *target, int *enabled);
@@ -1338,6 +1342,32 @@ static int cortex_a_step(struct target *target, int current, target_addr_t addre
 		return ERROR_OK;
 	}
 
+	/*
+	 * if halted on precise watchpoint, we need to disable it otherwise
+	 * it will be hit again. If cannot detect the specific watchpoint,
+	 * then disable all
+	 */
+	bool all_wp_disabled = false;
+	struct watchpoint *hit_watchpoint = NULL;
+	if (current && target->debug_reason == DBG_REASON_WATCHPOINT &&
+			DSCR_ENTRY(cortex_a->cpudbg_dscr) == DSCR_ENTRY_PRECISE_WATCHPT) {
+		retval = target_hit_watchpoint(target, &hit_watchpoint);
+		if (retval == ERROR_OK) {
+			// wp detected, in hit_watchpoint
+			retval = cortex_a_unset_watchpoint(target, hit_watchpoint);
+			if (retval != ERROR_OK)
+				return retval;
+		} else {
+			// cannot detect wp, unset all
+			for (struct watchpoint *wp = target->watchpoints; wp; wp = wp->next) {
+				retval = cortex_a_unset_watchpoint(target, wp);
+				if (retval != ERROR_OK)
+					return retval;
+			}
+			all_wp_disabled = true;
+		}
+	}
+
 	/* Setup single step breakpoint */
 	stepbreakpoint.address = address;
 	stepbreakpoint.asid = 0;
@@ -1406,6 +1436,13 @@ static int cortex_a_step(struct target *target, int current, target_addr_t addre
 
 
 	target->debug_reason = DBG_REASON_BREAKPOINT;
+
+	if (hit_watchpoint)
+		cortex_a_set_watchpoint(target, hit_watchpoint);
+
+	if (all_wp_disabled)
+		for (struct watchpoint *wp = target->watchpoints; wp; wp = wp->next)
+			cortex_a_set_watchpoint(target, wp);
 
 	if (breakpoint)
 		cortex_a_set_breakpoint(target, breakpoint, 0);
