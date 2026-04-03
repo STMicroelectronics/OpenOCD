@@ -70,6 +70,8 @@ static int cortex_a_set_watchpoint(struct target *target,
 	struct watchpoint *watchpoint);
 static int cortex_a_unset_watchpoint(struct target *target,
 	struct watchpoint *watchpoint);
+static int cortex_a_step(struct target *target, int current,
+	target_addr_t address, int handle_breakpoints);
 static int cortex_a_wait_dscr_bits(struct target *target, uint32_t mask,
 	uint32_t value, uint32_t *dscr);
 static int cortex_a_mmu(struct target *target, int *enabled);
@@ -909,10 +911,24 @@ static int cortex_a_halt(struct target *target)
 static int cortex_a_internal_restore(struct target *target, int current,
 	target_addr_t address, int handle_breakpoints, int debug_execution)
 {
+	struct cortex_a_common *cortex_a = target_to_cortex_a(target);
 	struct armv7a_common *armv7a = target_to_armv7a(target);
 	struct arm *arm = &armv7a->arm;
 	int retval;
 	uint32_t resume_pc;
+
+	/*
+	 * if halted on precise watchpoint, run a single step to skip the current
+	 * instruction, then continue
+	 */
+	if (current && target->debug_reason == DBG_REASON_WATCHPOINT &&
+			DSCR_ENTRY(cortex_a->cpudbg_dscr) == DSCR_ENTRY_PRECISE_WATCHPT) {
+		retval = cortex_a_step(target, 1, 0, handle_breakpoints);
+		if (retval != ERROR_OK)
+			return retval;
+
+		LOG_INFO("Now PC is 0x%08" PRIx32, buf_get_u32(arm->pc->value, 0, 32));
+	}
 
 	if (!debug_execution)
 		target_free_all_working_areas(target);
