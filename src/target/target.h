@@ -495,8 +495,12 @@ int target_remove_watchpoint(struct target *target,
 
 /**
  * Find out the just hit @a watchpoint for @a target.
+ * @param target     The target to query
+ * @param watchpoint The hit watchpoint
+ * @return ERROR_OK if the hit watchpoint is detected, otherwise error
  *
- * This routine is a wrapper for target->type->hit_watchpoint.
+ * This is a wrapper for @a target->type->hit_watchpoint
+ * and handles the trivial case of a single watchpoint set.
  */
 int target_hit_watchpoint(struct target *target,
 		struct watchpoint **watchpoint);

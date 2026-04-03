@@ -659,36 +659,10 @@ int watchpoint_clear_target(struct target *target)
 	return retval;
 }
 
-int watchpoint_hit(struct target *target, enum watchpoint_rw *rw,
-		   target_addr_t *address)
+/* report type and address of the watchpoint */
+void watchpoint_read(const struct watchpoint *watchpoint,
+		enum watchpoint_rw *rw, target_addr_t *address)
 {
-	int retval;
-	struct watchpoint *hit_watchpoint;
-
-	retval = target_hit_watchpoint(target, &hit_watchpoint);
-	if (retval == ERROR_NOT_IMPLEMENTED
-			&& target->debug_reason == DBG_REASON_WATCHPOINT) {
-		// Handle the trivial case: only one watchpoint is set
-		unsigned int cnt = 0;
-		struct watchpoint *wp = target->watchpoints;
-		while (wp) {
-			cnt++;
-			wp = wp->next;
-		}
-		if (cnt == 1) {
-			retval = ERROR_OK;
-			hit_watchpoint = target->watchpoints;
-		}
-	}
-	if (retval != ERROR_OK)
-		return ERROR_FAIL;
-
-	*rw = hit_watchpoint->rw;
-	*address = hit_watchpoint->address;
-
-	LOG_TARGET_DEBUG(target, "Found hit watchpoint at " TARGET_ADDR_FMT " (WPID: %d)",
-		hit_watchpoint->address,
-		hit_watchpoint->unique_id);
-
-	return ERROR_OK;
+	*rw = watchpoint->rw;
+	*address = watchpoint->address;
 }

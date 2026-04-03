@@ -75,9 +75,9 @@ int watchpoint_add(struct target *target,
 int watchpoint_remove(struct target *target, target_addr_t address);
 int watchpoint_remove_all(struct target *target);
 
-/* report type and address of just hit watchpoint */
-int watchpoint_hit(struct target *target, enum watchpoint_rw *rw,
-		target_addr_t *address);
+/* report type and address of the watchpoint */
+void watchpoint_read(const struct watchpoint *watchpoint,
+		enum watchpoint_rw *rw, target_addr_t *address);
 
 static inline void watchpoint_set(struct watchpoint *watchpoint, unsigned int number)
 {

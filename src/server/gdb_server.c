@@ -799,11 +799,13 @@ static void gdb_signal_reply(struct target *target, struct connection *connectio
 
 		stop_reason[0] = '\0';
 		if (ct->debug_reason == DBG_REASON_WATCHPOINT) {
+			struct watchpoint *wp;
 			enum watchpoint_rw hit_wp_type;
 			target_addr_t hit_wp_address;
 
-			if (watchpoint_hit(ct, &hit_wp_type, &hit_wp_address) == ERROR_OK) {
-
+			int retval = target_hit_watchpoint(ct, &wp);
+			if (retval == ERROR_OK) {
+				watchpoint_read(wp, &hit_wp_type, &hit_wp_address);
 				switch (hit_wp_type) {
 					case WPT_WRITE:
 						snprintf(stop_reason, sizeof(stop_reason),

@@ -1344,22 +1344,38 @@ int target_remove_watchpoint(struct target *target,
 {
 	return target->type->remove_watchpoint(target, watchpoint);
 }
+
 int target_hit_watchpoint(struct target *target,
 		struct watchpoint **hit_watchpoint)
 {
+	struct watchpoint *wp;
+
 	if (target->state != TARGET_HALTED) {
 		LOG_TARGET_ERROR(target, "not halted (hit watchpoint)");
 		return ERROR_TARGET_NOT_HALTED;
 	}
 
-	if (!target->type->hit_watchpoint) {
-		/* For backward compatible, if hit_watchpoint is not implemented,
-		 * return error such that gdb_server will not take the nonsense
-		 * information. */
-		return ERROR_NOT_IMPLEMENTED;
+	if (target->type->hit_watchpoint) {
+		int retval = target->type->hit_watchpoint(target, &wp);
+		if (retval == ERROR_OK)
+			goto out_ok;
+
+		if (retval != ERROR_NOT_IMPLEMENTED)
+			return retval;
 	}
 
-	return target->type->hit_watchpoint(target, hit_watchpoint);
+	// Handle the trivial case: only one watchpoint is set
+	wp = target->watchpoints;
+	if (!wp || wp->next)
+		return ERROR_FAIL;
+
+out_ok:
+	LOG_TARGET_DEBUG(target,
+		"Found hit watchpoint at " TARGET_ADDR_FMT " (WPID: %d)",
+		wp->address, wp->unique_id);
+
+	*hit_watchpoint = wp;
+	return ERROR_OK;
 }
 
 const char *target_get_gdb_arch(const struct target *target)
