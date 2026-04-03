@@ -907,7 +907,7 @@ static int cortex_a_halt(struct target *target)
 }
 
 static int cortex_a_internal_restore(struct target *target, int current,
-	target_addr_t *address, int handle_breakpoints, int debug_execution)
+	target_addr_t address, int handle_breakpoints, int debug_execution)
 {
 	struct armv7a_common *armv7a = target_to_armv7a(target);
 	struct arm *arm = &armv7a->arm;
@@ -939,11 +939,10 @@ static int cortex_a_internal_restore(struct target *target, int current,
 #endif
 
 	/* current = 1: continue on current pc, otherwise continue at <address> */
-	resume_pc = buf_get_u32(arm->pc->value, 0, 32);
-	if (!current)
-		resume_pc = *address;
+	if (current)
+		resume_pc = buf_get_u32(arm->pc->value, 0, 32);
 	else
-		*address = resume_pc;
+		resume_pc = address;
 
 	/* Make sure that the Armv7 gdb thumb fixups does not
 	 * kill the return address
@@ -1065,14 +1064,13 @@ static int cortex_a_restore_smp(struct target *target, int handle_breakpoints)
 {
 	int retval = 0;
 	struct target_list *head;
-	target_addr_t address;
 
 	foreach_smp_target(head, target->smp_targets) {
 		struct target *curr = head->target;
 		if ((curr != target) && (curr->state != TARGET_RUNNING)
 			&& target_was_examined(curr)) {
 			/*  resume current address , not in step mode */
-			retval += cortex_a_internal_restore(curr, 1, &address,
+			retval += cortex_a_internal_restore(curr, 1, 0,
 					handle_breakpoints, 0);
 			retval += cortex_a_internal_restart(curr);
 		}
@@ -1093,7 +1091,13 @@ static int cortex_a_resume(struct target *target, int current,
 		target_call_event_callbacks(target, TARGET_EVENT_RESUMED);
 		return 0;
 	}
-	cortex_a_internal_restore(target, current, &address, handle_breakpoints, debug_execution);
+
+	struct armv7a_common *armv7a = target_to_armv7a(target);
+	struct arm *arm = &armv7a->arm;
+	target_addr_t resume_pc = current ? buf_get_u32(arm->pc->value, 0, 32) : address;
+
+	cortex_a_internal_restore(target, current, address, handle_breakpoints,
+		debug_execution);
 	if (target->smp) {
 		target->gdb_service->core[0] = -1;
 		retval = cortex_a_restore_smp(target, handle_breakpoints);
@@ -1105,11 +1109,11 @@ static int cortex_a_resume(struct target *target, int current,
 	if (!debug_execution) {
 		target->state = TARGET_RUNNING;
 		target_call_event_callbacks(target, TARGET_EVENT_RESUMED);
-		LOG_DEBUG("target resumed at " TARGET_ADDR_FMT, address);
+		LOG_DEBUG("target resumed at " TARGET_ADDR_FMT, resume_pc);
 	} else {
 		target->state = TARGET_DEBUG_RUNNING;
 		target_call_event_callbacks(target, TARGET_EVENT_DEBUG_RESUMED);
-		LOG_DEBUG("target debug resumed at " TARGET_ADDR_FMT, address);
+		LOG_DEBUG("target debug resumed at " TARGET_ADDR_FMT, resume_pc);
 	}
 
 	return ERROR_OK;
